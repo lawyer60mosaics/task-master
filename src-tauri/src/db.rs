@@ -10,19 +10,30 @@ pub fn init_db(app_dir: PathBuf) -> Result<Connection> {
     let conn = Connection::open(db_path)?;
 
     // Create tables
+    // 1. 便笺 (Notes)
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS memos (
+        "CREATE TABLE IF NOT EXISTS notes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            type TEXT DEFAULT 'memo',
             content TEXT NOT NULL,
-            username TEXT,
-            password TEXT,
-            tags TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )",
         [],
     )?;
 
+    // 2. 账号管理 (Accounts)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            platform TEXT NOT NULL,
+            username TEXT NOT NULL,
+            password TEXT NOT NULL,
+            note TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )?;
+
+    // 3. 项目 (Projects)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS projects (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,6 +44,7 @@ pub fn init_db(app_dir: PathBuf) -> Result<Connection> {
         [],
     )?;
 
+    // 4. 看板栏目 (Columns)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS columns (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,6 +56,7 @@ pub fn init_db(app_dir: PathBuf) -> Result<Connection> {
         [],
     )?;
 
+    // 5. 任务 (Tasks)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

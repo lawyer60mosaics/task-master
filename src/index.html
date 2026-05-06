@@ -3,50 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>任务大师</title>
+    <title>备忘录Auto</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="app-container">
         <aside class="sidebar">
             <div class="sidebar-header">
-                <h2>任务大师</h2>
+                <h2>备忘录Auto</h2>
             </div>
             <nav class="sidebar-nav">
-                <button id="nav-memos" class="active">备忘录</button>
+                <button id="nav-notes" class="active">📝 便笺</button>
+                <button id="nav-accounts">🔑 账号管理</button>
                 <div class="projects-section">
-                    <h3>项目</h3>
-                    <ul id="project-list">
-                        <!-- 项目列表将通过 JS 动态加载 -->
-                    </ul>
+                    <h3>📊 项目管理</h3>
+                    <ul id="project-list"></ul>
                     <button id="btn-add-project">+ 新建项目</button>
                 </div>
             </nav>
         </aside>
         
         <main class="main-content">
-            <!-- 备忘录视图 -->
-            <section id="memo-view" class="view">
+            <!-- 便笺视图 -->
+            <section id="note-view" class="view">
                 <div class="view-header">
-                    <h1>备忘录</h1>
+                    <h1>便笺</h1>
                 </div>
-                <div class="memo-input">
-                    <div class="memo-type-selector">
-                        <label><input type="radio" name="memo-type" value="memo" checked> 随手记</label>
-                        <label><input type="radio" name="memo-type" value="account"> 账号密码</label>
-                        <label><input type="radio" name="memo-type" value="github"> GitHub</label>
-                        <label><input type="radio" name="memo-type" value="google"> Google</label>
-                    </div>
-                    <textarea id="memo-textarea" placeholder="描述或备注..."></textarea>
-                    <div id="account-fields" style="display: none;">
-                        <input type="text" id="memo-username" placeholder="用户名/邮箱">
-                        <input type="password" id="memo-password" placeholder="密码">
-                    </div>
-                    <button id="btn-save-memo">保存</button>
+                <div class="note-input">
+                    <textarea id="note-textarea" placeholder="记点什么..."></textarea>
+                    <button id="btn-save-note">保存便笺</button>
                 </div>
-                <div id="memo-list" class="memo-list">
-                    <!-- 备忘录列表 -->
+                <div id="note-list" class="note-list"></div>
+            </section>
+
+            <!-- 账号管理视图 -->
+            <section id="account-view" class="view" style="display: none;">
+                <div class="view-header">
+                    <h1>账号管理</h1>
+                    <button id="btn-open-add-account" class="btn-primary">+ 添加账号</button>
                 </div>
+                <div id="account-list" class="account-list"></div>
             </section>
 
             <!-- 项目视图 (看板) -->
@@ -54,9 +50,7 @@
                 <div class="view-header">
                     <h1 id="current-project-name">项目名称</h1>
                 </div>
-                <div id="kanban-board" class="kanban-board">
-                    <!-- 看板栏目 -->
-                </div>
+                <div id="kanban-board" class="kanban-board"></div>
             </section>
         </main>
     </div>
@@ -67,8 +61,41 @@
             <h3>新建项目</h3>
             <input type="text" id="input-project-name" placeholder="项目名称">
             <div class="modal-actions">
-                <button id="btn-modal-cancel">取消</button>
-                <button id="btn-modal-confirm">创建</button>
+                <button onclick="closeModal('modal-project')">取消</button>
+                <button id="btn-modal-confirm-project" class="btn-primary">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 弹窗: 添加/编辑账号 -->
+    <div id="modal-account" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3 id="account-modal-title">添加账号</h3>
+            <input type="hidden" id="edit-account-id">
+            <div class="form-group">
+                <label>平台</label>
+                <select id="acc-platform">
+                    <option value="Google">Google</option>
+                    <option value="GitHub">GitHub</option>
+                    <option value="Vultr">Vultr</option>
+                    <option value="Custom">自定义</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>用户名/邮箱</label>
+                <input type="text" id="acc-username" placeholder="UID">
+            </div>
+            <div class="form-group">
+                <label>密码</label>
+                <input type="password" id="acc-password" placeholder="PWD">
+            </div>
+            <div class="form-group">
+                <label>备注</label>
+                <textarea id="acc-note" placeholder="备注信息"></textarea>
+            </div>
+            <div class="modal-actions">
+                <button onclick="closeModal('modal-account')">取消</button>
+                <button id="btn-save-account" class="btn-primary">保存</button>
             </div>
         </div>
     </div>

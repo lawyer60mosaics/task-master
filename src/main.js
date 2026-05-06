@@ -1,151 +1,168 @@
 const { invoke } = window.__TAURI__.core;
 
-let currentView = 'memo';
+let currentView = 'note';
 let currentProject = null;
 
 // DOM Elements
-const navMemos = document.getElementById('nav-memos');
+const navNotes = document.getElementById('nav-notes');
+const navAccounts = document.getElementById('nav-accounts');
 const projectList = document.getElementById('project-list');
-const btnAddProject = document.getElementById('btn-add-project');
-const memoView = document.getElementById('memo-view');
+
+const noteView = document.getElementById('note-view');
+const accountView = document.getElementById('account-view');
 const projectView = document.getElementById('project-view');
-const memoTextarea = document.getElementById('memo-textarea');
-const btnSaveMemo = document.getElementById('btn-save-memo');
-const memoListContainer = document.getElementById('memo-list');
-const modalProject = document.getElementById('modal-project');
-const btnModalCancel = document.getElementById('btn-modal-cancel');
-const btnModalConfirm = document.getElementById('btn-modal-confirm');
-const inputProjectName = document.getElementById('input-project-name');
+
+const noteTextarea = document.getElementById('note-textarea');
+const noteListContainer = document.getElementById('note-list');
+const accountListContainer = document.getElementById('account-list');
 
 // Initialize
 window.addEventListener('DOMContentLoaded', () => {
-    loadMemos();
+    loadNotes();
+    loadAccounts();
     loadProjects();
 });
 
 // Navigation
-navMemos.addEventListener('click', () => {
-    showView('memo');
-    navMemos.classList.add('active');
-    document.querySelectorAll('#project-list li').forEach(li => li.classList.remove('active'));
-});
+navNotes.addEventListener('click', () => switchView('note'));
+navAccounts.addEventListener('click', () => switchView('account'));
 
-function showView(view) {
+function switchView(view) {
     currentView = view;
-    if (view === 'memo') {
-        memoView.style.display = 'block';
-        projectView.style.display = 'none';
-    } else {
-        memoView.style.display = 'none';
+    [noteView, accountView, projectView].forEach(v => v.style.display = 'none');
+    [navNotes, navAccounts].forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#project-list li').forEach(li => li.classList.remove('active'));
+
+    if (view === 'note') {
+        noteView.style.display = 'block';
+        navNotes.classList.add('active');
+        loadNotes();
+    } else if (view === 'account') {
+        accountView.style.display = 'block';
+        navAccounts.classList.add('active');
+        loadAccounts();
+    } else if (view === 'project') {
         projectView.style.display = 'block';
     }
 }
 
-// Memos Logic
-const accountFields = document.getElementById('account-fields');
-const memoTypeRadios = document.querySelectorAll('input[name="memo-type"]');
-
-memoTypeRadios.forEach(radio => {
-    radio.addEventListener('change', (e) => {
-        if (e.target.value === 'memo') {
-            accountFields.style.display = 'none';
-        } else {
-            accountFields.style.display = 'flex';
-        }
-    });
-});
-
-async function loadMemos() {
+// --- Notes Logic ---
+async function loadNotes() {
     try {
-        const memos = await invoke('get_memos');
-        memoListContainer.innerHTML = '';
-        memos.forEach(memo => {
+        const notes = await invoke('get_notes');
+        noteListContainer.innerHTML = '';
+        notes.forEach(note => {
             const card = document.createElement('div');
-            card.className = 'memo-card';
-            
-            let accountHtml = '';
-            if (memo.memo_type !== 'memo') {
-                accountHtml = `
-                    <div class="account-info">
-                        <div class="account-row">
-                            <span>UID: ${memo.username || '-'}</span>
-                            <button class="btn-copy" onclick="copyToClipboard('${memo.username}')">复制</button>
-                        </div>
-                        <div class="account-row">
-                            <span>PWD: ******</span>
-                            <button class="btn-copy" onclick="copyToClipboard('${memo.password}')">复制密码</button>
-                        </div>
-                    </div>
-                `;
-            }
-
+            card.className = 'note-card';
             card.innerHTML = `
-                <span class="memo-type-badge">${memo.memo_type}</span>
-                <p>${memo.content}</p>
-                ${accountHtml}
-                <div class="memo-date">${memo.created_at}</div>
+                <p>${note.content}</p>
+                <div class="note-actions">
+                    <button class="btn-icon" onclick="deleteNote(${note.id})">🗑️</button>
+                </div>
             `;
-            memoListContainer.appendChild(card);
+            noteListContainer.appendChild(card);
         });
-    } catch (err) {
-        console.error('Failed to load memos:', err);
-    }
+    } catch (err) { console.error(err); }
 }
 
-window.copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text).then(() => {
-        // Optional: show a toast or feedback
-    });
-};
-
-btnSaveMemo.addEventListener('click', async () => {
-    const content = memoTextarea.value.trim();
-    const memo_type = document.querySelector('input[name="memo-type"]:checked').value;
-    const username = document.getElementById('memo-username').value.trim();
-    const password = document.getElementById('memo-password').value.trim();
-    
-    if (!content && memo_type === 'memo') return;
-    
+document.getElementById('btn-save-note').addEventListener('click', async () => {
+    const content = noteTextarea.value.trim();
+    if (!content) return;
     try {
-        await invoke('add_memo', { 
-            memoType: memo_type, 
-            content, 
-            username: username || null, 
-            password: password || null 
-        });
-        memoTextarea.value = '';
-        document.getElementById('memo-username').value = '';
-        document.getElementById('memo-password').value = '';
-        loadMemos();
-    } catch (err) {
-        console.error('Failed to save memo:', err);
-    }
+        await invoke('add_note', { content });
+        noteTextarea.value = '';
+        loadNotes();
+    } catch (err) { console.error(err); }
 });
 
-// Projects Logic
+window.deleteNote = async (id) => {
+    if (!confirm('确认删除便笺？')) return;
+    try {
+        await invoke('delete_note', { id });
+        loadNotes();
+    } catch (err) { console.error(err); }
+};
+
+// --- Accounts Logic ---
+async function loadAccounts() {
+    try {
+        const accounts = await invoke('get_accounts');
+        accountListContainer.innerHTML = '';
+        accounts.forEach(acc => {
+            const card = document.createElement('div');
+            card.className = 'account-card';
+            card.innerHTML = `
+                <div class="acc-info">
+                    <h4>${acc.platform}</h4>
+                    <p>UID: ${acc.username}</p>
+                    <p>PWD: ******</p>
+                </div>
+                <div class="acc-ops">
+                    <button class="btn-copy-small" onclick="copyToClipboard('${acc.username}')">复制UID</button>
+                    <button class="btn-copy-small" onclick="copyToClipboard('${acc.password}')">复制PWD</button>
+                    <button class="btn-icon" onclick="deleteAccount(${acc.id})">🗑️</button>
+                </div>
+            `;
+            accountListContainer.appendChild(card);
+        });
+    } catch (err) { console.error(err); }
+}
+
+document.getElementById('btn-open-add-account').addEventListener('click', () => {
+    document.getElementById('account-modal-title').textContent = '添加账号';
+    document.getElementById('edit-account-id').value = '';
+    document.getElementById('acc-username').value = '';
+    document.getElementById('acc-password').value = '';
+    document.getElementById('acc-note').value = '';
+    document.getElementById('modal-account').style.display = 'flex';
+});
+
+document.getElementById('btn-save-account').addEventListener('click', async () => {
+    const platform = document.getElementById('acc-platform').value;
+    const username = document.getElementById('acc-username').value.trim();
+    const password = document.getElementById('acc-password').value.trim();
+    const note = document.getElementById('acc-note').value.trim();
+
+    if (!username || !password) return;
+
+    try {
+        await invoke('add_account', { platform, username, password, note: note || null });
+        closeModal('modal-account');
+        loadAccounts();
+    } catch (err) { console.error(err); }
+});
+
+window.deleteAccount = async (id) => {
+    if (!confirm('确认删除此账号记录？')) return;
+    try {
+        await invoke('delete_account', { id });
+        loadAccounts();
+    } catch (err) { console.error(err); }
+};
+
+window.copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+};
+
+// --- Projects Logic ---
 async function loadProjects() {
     try {
         const projects = await invoke('get_projects');
         projectList.innerHTML = '';
         projects.forEach(project => {
             const li = document.createElement('li');
-            li.textContent = project.name;
-            li.addEventListener('click', () => {
-                selectProject(project);
-            });
+            li.textContent = `📊 ${project.name}`;
+            li.addEventListener('click', () => selectProject(project));
             projectList.appendChild(li);
         });
-    } catch (err) {
-        console.error('Failed to load projects:', err);
-    }
+    } catch (err) { console.error(err); }
 }
 
 function selectProject(project) {
     currentProject = project;
-    showView('project');
-    navMemos.classList.remove('active');
+    switchView('project');
     document.querySelectorAll('#project-list li').forEach(li => {
-        if (li.textContent === project.name) li.classList.add('active');
+        if (li.textContent.includes(project.name)) li.classList.add('active');
         else li.classList.remove('active');
     });
     document.getElementById('current-project-name').textContent = project.name;
@@ -157,70 +174,54 @@ async function loadKanban(projectId) {
         const columns = await invoke('get_project_board', { projectId });
         const board = document.getElementById('kanban-board');
         board.innerHTML = '';
-        
         columns.forEach(col => {
             const colDiv = document.createElement('div');
             colDiv.className = 'kanban-column';
             colDiv.innerHTML = `
                 <h4>${col.name}</h4>
-                <div class="kanban-tasks" id="tasks-col-${col.id}"></div>
+                <div class="kanban-tasks"></div>
                 <div class="add-task-inline">
-                    <input type="text" placeholder="新任务..." id="input-new-task-${col.id}">
-                    <button onclick="addNewTask(${col.id})">+</button>
+                    <input type="text" placeholder="新任务..." id="task-in-${col.id}">
+                    <button onclick="addTask(${col.id})">+</button>
                 </div>
             `;
-            board.appendChild(colDiv);
-            
-            const tasksContainer = colDiv.querySelector('.kanban-tasks');
+            const tasksDiv = colDiv.querySelector('.kanban-tasks');
             col.tasks.forEach(task => {
-                const taskCard = document.createElement('div');
-                taskCard.className = 'task-card';
-                taskCard.innerHTML = `
-                    <div class="task-title">${task.title}</div>
-                    ${task.description ? `<div class="task-desc">${task.description}</div>` : ''}
-                `;
-                tasksContainer.appendChild(taskCard);
+                const card = document.createElement('div');
+                card.className = 'task-card';
+                card.textContent = task.title;
+                tasksDiv.appendChild(card);
             });
+            board.appendChild(colDiv);
         });
-    } catch (err) {
-        console.error('Failed to load board:', err);
-    }
+    } catch (err) { console.error(err); }
 }
 
-window.addNewTask = async function(columnId) {
-    const input = document.getElementById(`input-new-task-${columnId}`);
+window.addTask = async (columnId) => {
+    const input = document.getElementById(`task-in-${columnId}`);
     const title = input.value.trim();
     if (!title) return;
-    
     try {
         await invoke('add_task', { columnId, title });
-        input.value = '';
         loadKanban(currentProject.id);
-    } catch (err) {
-        console.error('Failed to add task:', err);
-    }
+    } catch (err) { console.error(err); }
 };
 
-// Modal Logic
-btnAddProject.addEventListener('click', () => {
-    modalProject.style.display = 'flex';
+document.getElementById('btn-add-project').addEventListener('click', () => {
+    document.getElementById('modal-project').style.display = 'flex';
 });
 
-btnModalCancel.addEventListener('click', () => {
-    modalProject.style.display = 'none';
-    inputProjectName.value = '';
-});
-
-btnModalConfirm.addEventListener('click', async () => {
-    const name = inputProjectName.value.trim();
+document.getElementById('btn-modal-confirm-project').addEventListener('click', async () => {
+    const name = document.getElementById('input-project-name').value.trim();
     if (!name) return;
-    
     try {
         await invoke('add_project', { name });
-        modalProject.style.display = 'none';
-        inputProjectName.value = '';
+        closeModal('modal-project');
         loadProjects();
-    } catch (err) {
-        console.error('Failed to add project:', err);
-    }
+    } catch (err) { console.error(err); }
 });
+
+// Helpers
+window.closeModal = (id) => {
+    document.getElementById(id).style.display = 'none';
+};
