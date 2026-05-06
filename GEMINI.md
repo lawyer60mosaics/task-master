@@ -22,30 +22,27 @@
 
 ---
 
-## 构建与运行
+## CI/CD 与自动化发布
 
-### 环境准备
-- [Rust](https://www.rust-lang.org/tools/install)
-- [Node.js](https://nodejs.org/)
-- [Tauri CLI](https://tauri.app/v2/guides/slow-start/command-line-interface/) (`npm install -g @tauri-apps/cli`)
+项目使用 GitHub Actions 进行自动化版本管理与多平台构建。
 
-### 常用命令
-- **安装依赖:**
-  ```bash
-  npm install
-  ```
-- **开发模式运行:**
-  ```bash
-  npm run tauri dev
-  ```
-- **构建前端:**
-  ```bash
-  npm run build
-  ```
-- **构建生产版本 (App):**
-  ```bash
-  npm run tauri build
-  ```
+### 工作流逻辑 (`publish.yml`)
+1.  **版本自增 (`bump-version`)**:
+    *   在 `ubuntu-latest` 上运行。
+    *   自动执行 `npm version patch`。
+    *   同步版本号至 `tauri.conf.json` 并提交回 `main` 分支。
+2.  **发布构建 (`publish`)**:
+    *   依赖 `bump-version` 完成。
+    *   **macOS**: 构建 **Universal Binary** (`universal-apple-darwin`)，适配 Intel 和 Apple Silicon (M1/M2/M3)。
+    *   **Windows**: 构建 `.msi` 和 `.exe` 安装包。
+    *   **Linux**: 构建 `.AppImage` 和 `.deb`。
+    *   **发布**: 自动创建 GitHub Release 并上传各平台产物。
+
+### macOS 代码签名 (推荐)
+为避免 macOS 上的安全警告，建议在仓库的 Secrets 中配置以下变量：
+- `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`
+- `APPLE_SIGNING_IDENTITY`
+- `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`
 
 ---
 
