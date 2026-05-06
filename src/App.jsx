@@ -156,7 +156,12 @@ const App = () => {
     try {
       await invoke("update_task", {
         id: editingTask.id,
-        ...values,
+        title: values.title,
+        content: values.content || null,
+        category: values.category,
+        taskType: values.taskType,
+        status: values.status,
+        priority: editingTask.priority || "medium",
         projectName: values.projectName || null
       });
       message.success("更新成功");
@@ -412,18 +417,18 @@ const App = () => {
                 <Card 
                   style={{ borderRadius: 16 }}
                   title={
-                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                      <Space size="middle">
-                        <div style={{ width: 40, height: 40, background: '#eff6ff', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                      <Space size="middle" wrap>
+                        <div style={{ width: 40, height: 40, background: '#eff6ff', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                           <SolutionOutlined style={{ color: '#3b82f6', fontSize: 20 }} />
                         </div>
-                        <div>
-                          <Text strong style={{ fontSize: 18 }}>{proj.name}</Text>
-                          <div style={{ fontSize: 12, fontWeight: 400, color: '#64748b' }}>{proj.description || '无项目描述'}</div>
+                        <div style={{ maxWidth: '300px' }}>
+                          <Text strong style={{ fontSize: 18, display: 'block' }}>{proj.name}</Text>
+                          <div style={{ fontSize: 12, fontWeight: 400, color: '#64748b', whiteSpace: 'normal', lineHeight: '1.4' }}>{proj.description || '无项目描述'}</div>
                         </div>
                         <Tag color={proj.status === 'active' ? 'processing' : 'default'}>{proj.status === 'active' ? '进行中' : '已归档'}</Tag>
                       </Space>
-                      <div style={{ width: 350, display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div style={{ width: 350, display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                             <Text type="secondary" style={{ fontSize: 12 }}>完成进度</Text>
@@ -522,7 +527,7 @@ const App = () => {
           {knowledgeItems.map(t => (
             <Col xs={24} sm={12} md={8} key={t.id}>
               <Card 
-                title={<Space><BookOutlined style={{ color: '#f59e0b' }} />{t.title}</Space>} 
+                title={<Space wrap><BookOutlined style={{ color: '#f59e0b' }} />{t.title}</Space>} 
                 hoverable
                 bodyStyle={{ padding: 16 }}
                 extra={

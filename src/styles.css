@@ -75,4 +75,21 @@ pre {
   font-size: 13px !important;
   color: #334155 !important;
   border: 1px solid #e2e8f0 !important;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-wrap: break-word;
+}
+
+/* Global Text Wrapping Fixes */
+.ant-card-head-title {
+  white-space: normal !important;
+  word-break: break-all;
+}
+
+.ant-card-body {
+  word-break: break-word;
+}
+
+.ant-typography {
+  word-break: break-word;
 }
