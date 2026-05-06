@@ -53,10 +53,11 @@ async function loadNotes() {
         noteListContainer.innerHTML = '';
         notes.forEach(note => {
             const card = document.createElement('div');
-            card.className = 'note-card';
+            card.className = 'card note-card';
             card.innerHTML = `
                 <p>${note.content}</p>
                 <div class="note-actions">
+                    <span style="font-size: 0.75rem; color: var(--text-dim);">${note.created_at}</span>
                     <button class="btn-icon" onclick="deleteNote(${note.id})">🗑️</button>
                 </div>
             `;
@@ -90,16 +91,16 @@ async function loadAccounts() {
         accountListContainer.innerHTML = '';
         accounts.forEach(acc => {
             const card = document.createElement('div');
-            card.className = 'account-card';
+            card.className = 'card account-card';
             card.innerHTML = `
                 <div class="acc-info">
-                    <h4>${acc.platform}</h4>
-                    <p>UID: ${acc.username}</p>
-                    <p>PWD: ******</p>
+                    <span class="badge badge-todo">${acc.platform}</span>
+                    <p style="font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; margin: 8px 0;">${acc.username}</p>
+                    <p style="color: var(--text-dim); font-size: 0.8rem;">••••••••</p>
                 </div>
                 <div class="acc-ops">
-                    <button class="btn-copy-small" onclick="copyToClipboard('${acc.username}')">复制UID</button>
-                    <button class="btn-copy-small" onclick="copyToClipboard('${acc.password}')">复制PWD</button>
+                    <button class="btn-copy-small" onclick="copyToClipboard('${acc.username}', event)">复制UID</button>
+                    <button class="btn-copy-small" onclick="copyToClipboard('${acc.password}', event)">复制PWD</button>
                     <button class="btn-icon" onclick="deleteAccount(${acc.id})">🗑️</button>
                 </div>
             `;
@@ -107,6 +108,21 @@ async function loadAccounts() {
         });
     } catch (err) { console.error(err); }
 }
+
+window.copyToClipboard = (text, event) => {
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = event.currentTarget;
+        const originalText = btn.textContent;
+        btn.textContent = '已复制';
+        btn.style.color = 'var(--color-success)';
+        btn.style.borderColor = 'var(--color-success)';
+        setTimeout(() => {
+            btn.textContent = originalText;
+            btn.style.color = '';
+            btn.style.borderColor = '';
+        }, 1000);
+    });
+};
 
 document.getElementById('btn-open-add-account').addEventListener('click', () => {
     document.getElementById('account-modal-title').textContent = '添加账号';
@@ -140,10 +156,6 @@ window.deleteAccount = async (id) => {
     } catch (err) { console.error(err); }
 };
 
-window.copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-};
-
 // --- Projects Logic ---
 async function loadProjects() {
     try {
@@ -151,7 +163,7 @@ async function loadProjects() {
         projectList.innerHTML = '';
         projects.forEach(project => {
             const li = document.createElement('li');
-            li.textContent = `📊 ${project.name}`;
+            li.textContent = `${project.name}`;
             li.addEventListener('click', () => selectProject(project));
             projectList.appendChild(li);
         });
@@ -162,7 +174,7 @@ function selectProject(project) {
     currentProject = project;
     switchView('project');
     document.querySelectorAll('#project-list li').forEach(li => {
-        if (li.textContent.includes(project.name)) li.classList.add('active');
+        if (li.textContent === project.name) li.classList.add('active');
         else li.classList.remove('active');
     });
     document.getElementById('current-project-name').textContent = project.name;
@@ -178,17 +190,19 @@ async function loadKanban(projectId) {
             const colDiv = document.createElement('div');
             colDiv.className = 'kanban-column';
             colDiv.innerHTML = `
-                <h4>${col.name}</h4>
+                <h4 style="color: var(--text-dim); font-size: 0.8rem; text-transform: uppercase; margin-bottom: 16px;">${col.name}</h4>
                 <div class="kanban-tasks"></div>
-                <div class="add-task-inline">
-                    <input type="text" placeholder="新任务..." id="task-in-${col.id}">
-                    <button onclick="addTask(${col.id})">+</button>
+                <div class="add-task-inline" style="margin-top: 12px;">
+                    <input type="text" placeholder="快速添加..." id="task-in-${col.id}">
+                    <button class="btn-copy-small" onclick="addTask(${col.id})">+</button>
                 </div>
             `;
             const tasksDiv = colDiv.querySelector('.kanban-tasks');
             col.tasks.forEach(task => {
                 const card = document.createElement('div');
-                card.className = 'task-card';
+                card.className = 'card task-card';
+                card.style.padding = '12px';
+                card.style.marginBottom = '8px';
                 card.textContent = task.title;
                 tasksDiv.appendChild(card);
             });
