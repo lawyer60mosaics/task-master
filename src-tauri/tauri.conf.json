@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "备忘录Auto",
+  "productName": "MemoAuto",
   "version": "1.0.0",
   "identifier": "com.root.memo-auto",
   "build": {
