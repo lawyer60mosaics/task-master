@@ -1,31 +1,78 @@
+:root {
+  --primary-color: #1890ff;
+  --bg-color: #f8fafc;
+  --card-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --card-hover-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --radius-lg: 12px;
+  --radius-md: 8px;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
-    'Noto Color Emoji';
+  background-color: var(--bg-color);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans CJK SC', 'Source Han Sans CN', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  color: #1e293b;
 }
 
 #root {
   height: 100vh;
 }
 
-/* Custom Scrollbar for better look */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Ant Design Override for Modern Look */
+.ant-layout {
+  background: var(--bg-color) !important;
 }
 
+.ant-card {
+  border: none !important;
+  box-shadow: var(--card-shadow);
+  border-radius: var(--radius-lg) !important;
+  transition: all 0.3s ease !important;
+}
+
+.ant-card:hover {
+  box-shadow: var(--card-hover-shadow);
+}
+
+.ant-card-head {
+  border-bottom: 1px solid #f1f5f9 !important;
+  font-weight: 600 !important;
+}
+
+.ant-menu-inline, .ant-menu-vertical {
+  border-right: none !important;
+}
+
+.ant-menu-item {
+  border-radius: var(--radius-md) !important;
+  margin: 4px 8px !important;
+  width: calc(100% - 16px) !important;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: #d9d9d9;
+  background: #cbd5e1;
   border-radius: 10px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: #bfbfbf;
+  background: #94a3b8;
+}
+
+/* Code Snippets for Knowledge Base */
+pre {
+  background: #f1f5f9 !important;
+  padding: 12px !important;
+  border-radius: var(--radius-md) !important;
+  font-family: 'Fira Code', 'JetBrains Mono', monospace !important;
+  font-size: 13px !important;
+  color: #334155 !important;
+  border: 1px solid #e2e8f0 !important;
 }
