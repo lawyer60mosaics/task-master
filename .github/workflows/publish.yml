@@ -1,4 +1,4 @@
-name: "publish"
+name: "Auto-Version & Publish"
 
 on:
   push:
@@ -13,9 +13,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: "macos-latest" # for Apple Silicon
+          - platform: "macos-latest"
             args: "--target aarch64-apple-darwin"
-          - platform: "macos-latest" # for Intel
+          - platform: "macos-latest"
             args: "--target x86_64-apple-darwin"
           - platform: "ubuntu-22.04"
             args: ""
@@ -25,16 +25,41 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 获取完整历史以允许推送
 
       - name: setup node
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
 
+      # 只有在 Windows 运行任务时执行一次版本自增，避免四个任务重复增加
+      - name: Auto Version Bump
+        if: matrix.platform == 'windows-latest'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          # 增加 npm 版本
+          npm version patch --no-git-tag-version
+          # 同步版本号到 tauri.conf.json
+          node -e "const fs=require('fs'); const v=require('./package.json').version; const c=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json')); c.version=v; fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(c, null, 2));"
+          git add package.json package-lock.json src-tauri/tauri.conf.json
+          git commit -m "chore: bump version [skip ci]"
+          git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 给其他非 Windows 任务一点时间等待版本更新完成（可选）
+      - name: Wait for version bump
+        if: matrix.platform != 'windows-latest'
+        run: sleep 10s
+
+      - name: Pull latest changes
+        run: git pull origin main
+
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          # Those targets are only used on macos-latest
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: install dependencies (ubuntu only)
@@ -50,9 +75,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version
-          releaseName: "App v__VERSION__"
-          releaseBody: "See the assets below to download the new version."
-          releaseDraft: true
+          tagName: v__VERSION__
+          releaseName: "Release v__VERSION__"
+          releaseBody: "自动生成的版本发布。"
+          releaseDraft: false # 设置为 false，直接发布正式版
           prerelease: false
           args: ${{ matrix.args }}
