@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>任务大师</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>任务大师</h2>
+            </div>
+            <nav class="sidebar-nav">
+                <button id="nav-memos" class="active">备忘录</button>
+                <div class="projects-section">
+                    <h3>项目</h3>
+                    <ul id="project-list">
+                        <!-- 项目列表将通过 JS 动态加载 -->
+                    </ul>
+                    <button id="btn-add-project">+ 新建项目</button>
+                </div>
+            </nav>
+        </aside>
+        
+        <main class="main-content">
+            <!-- 备忘录视图 -->
+            <section id="memo-view" class="view">
+                <div class="view-header">
+                    <h1>备忘录</h1>
+                </div>
+                <div class="memo-input">
+                    <textarea id="memo-textarea" placeholder="写点什么..."></textarea>
+                    <button id="btn-save-memo">保存备忘</button>
+                </div>
+                <div id="memo-list" class="memo-list">
+                    <!-- 备忘录列表 -->
+                </div>
+            </section>
+
+            <!-- 项目视图 (看板) -->
+            <section id="project-view" class="view" style="display: none;">
+                <div class="view-header">
+                    <h1 id="current-project-name">项目名称</h1>
+                </div>
+                <div id="kanban-board" class="kanban-board">
+                    <!-- 看板栏目 -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 弹窗: 新建项目 -->
+    <div id="modal-project" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3>新建项目</h3>
+            <input type="text" id="input-project-name" placeholder="项目名称">
+            <div class="modal-actions">
+                <button id="btn-modal-cancel">取消</button>
+                <button id="btn-modal-confirm">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="main.js"></script>
+</body>
+</html>
