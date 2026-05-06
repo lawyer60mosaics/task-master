@@ -1,14 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-<<<<<<< HEAD
-  "productName": "task-master",
-  "version": "0.1.1",
-  "identifier": "com.root.task-master",
-=======
   "productName": "备忘录Auto",
   "version": "1.0.0",
   "identifier": "com.root.memo-auto",
->>>>>>> c670cb7 (feat: upgrade to 备忘录Auto with enhanced Notes and Account Management)
   "build": {
     "frontendDist": "../src"
   },
