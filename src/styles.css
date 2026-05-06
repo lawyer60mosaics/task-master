@@ -1,77 +1,31 @@
-:root {
-    --bg-main: #11111b;
-    --bg-sidebar: #181825;
-    --bg-card: #1e1e2e;
-    --border-color: #313244;
-    --text-main: #cdd6f4;
-    --text-dim: #a6adc8;
-    --color-primary: #89b4fa;
-    --color-success: #a6e3a1;
-    --color-warning: #f9e2af;
-    --color-danger: #f38ba8;
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+    'Noto Color Emoji';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'JetBrains Mono', monospace; background: var(--bg-main); color: var(--text-main); height: 100vh; display: flex; }
-.app-container { display: flex; width: 100%; }
+#root {
+  height: 100vh;
+}
 
-/* Sidebar */
-.sidebar { width: 260px; background: var(--bg-sidebar); border-right: 1px solid var(--border-color); padding: 20px; }
-.sidebar-header h2 { font-size: 1rem; color: var(--color-primary); margin-bottom: 30px; text-align: center; }
-.sidebar-nav button { width: 100%; text-align: left; padding: 12px; border: none; background: transparent; color: var(--text-dim); cursor: pointer; border-radius: 8px; margin-bottom: 4px; }
-.sidebar-nav button:hover { background: rgba(255,255,255,0.05); }
-.sidebar-nav button.active { background: rgba(255,255,255,0.1); color: var(--color-primary); font-weight: bold; }
+/* Custom Scrollbar for better look */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
 
-.projects-section { margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px; }
-.projects-section h3 { font-size: 0.7rem; color: var(--text-dim); margin-bottom: 10px; }
-#project-tags-list { list-style: none; }
-#project-tags-list li { padding: 8px 12px; font-size: 0.85rem; color: var(--text-dim); cursor: pointer; border-radius: 6px; }
-#project-tags-list li:hover { background: rgba(255,255,255,0.05); }
-#project-tags-list li.active { color: var(--color-primary); background: rgba(137, 180, 250, 0.1); }
+::-webkit-scrollbar-track {
+  background: transparent;
+}
 
-/* Main */
-.main-content { flex: 1; padding: 30px; overflow-y: auto; }
-.view-header { margin-bottom: 25px; }
+::-webkit-scrollbar-thumb {
+  background: #d9d9d9;
+  border-radius: 10px;
+}
 
-/* Inbox Quick Input */
-.quick-input-area { background: var(--bg-card); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 30px; }
-textarea { width: 100%; height: 60px; background: #11111b; border: 1px solid var(--border-color); color: var(--text-main); padding: 12px; border-radius: 8px; resize: none; margin-bottom: 10px; }
-.input-ops { display: flex; gap: 10px; }
-select { background: #11111b; color: var(--text-main); border: 1px solid var(--border-color); padding: 5px 10px; border-radius: 6px; }
-.btn-primary { background: var(--color-primary); color: #11111b; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
-
-/* Task Cards */
-.task-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; }
-.card { background: var(--bg-card); border: 1px solid var(--border-color); padding: 15px; border-radius: 10px; position: relative; }
-.card:hover { border-color: var(--color-primary); }
-.card .title { font-size: 0.95rem; margin-bottom: 10px; }
-.card .meta { font-size: 0.75rem; color: var(--text-dim); display: flex; justify-content: space-between; align-items: center; }
-.btn-icon { background: none; border: none; cursor: pointer; color: var(--text-dim); }
-.btn-icon:hover { color: var(--color-danger); }
-
-/* Kanban */
-.kanban-container { display: flex; gap: 20px; height: calc(100vh - 150px); overflow-x: auto; }
-.kanban-col { background: #181825; min-width: 320px; border-radius: 12px; padding: 15px; display: flex; flex-direction: column; }
-.kanban-col h3 { font-size: 0.85rem; margin-bottom: 15px; color: var(--text-dim); border-bottom: 2px solid var(--border-color); padding-bottom: 8px; }
-.task-list { flex: 1; overflow-y: auto; }
-
-/* Timeline */
-.timeline-container { border-left: 2px solid var(--border-color); padding-left: 20px; margin-left: 10px; }
-.timeline-item { position: relative; margin-bottom: 20px; }
-.timeline-item::before { content: ''; position: absolute; left: -27px; top: 5px; width: 12px; height: 12px; background: var(--color-primary); border-radius: 50%; border: 3px solid var(--bg-main); }
-.timeline-item .time { font-size: 0.75rem; color: var(--text-dim); margin-bottom: 5px; }
-
-/* Accounts */
-.account-list { display: flex; flex-direction: column; gap: 10px; }
-.account-card { display: flex; justify-content: space-between; align-items: center; }
-.btn-copy-small { background: transparent; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 3px 8px; border-radius: 4px; font-size: 0.7rem; cursor: pointer; }
-.btn-copy-small:hover { background: var(--color-primary); color: #11111b; }
-
-/* Modals */
-.modal { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; }
-.modal-content { background: var(--bg-card); padding: 30px; border-radius: 12px; width: 400px; border: 1px solid var(--border-color); }
-.form-group { margin-bottom: 15px; }
-.form-group label { display: block; margin-bottom: 5px; font-size: 0.8rem; color: var(--text-dim); }
-.form-group input { width: 100%; background: #11111b; border: 1px solid var(--border-color); color: var(--text-main); padding: 10px; border-radius: 6px; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
-.modal-actions button { background: none; border: 1px solid var(--border-color); color: var(--text-main); padding: 8px 15px; border-radius: 6px; cursor: pointer; }
+::-webkit-scrollbar-thumb:hover {
+  background: #bfbfbf;
+}
