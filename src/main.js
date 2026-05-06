@@ -1,241 +1,259 @@
 const { invoke } = window.__TAURI__.core;
 
-let currentView = 'note';
-let currentProject = null;
+let currentView = 'inbox';
+let currentProjectFilter = null;
+let allTasks = [];
 
 // DOM Elements
-const navNotes = document.getElementById('nav-notes');
+const navInbox = document.getElementById('nav-inbox');
+const navTasks = document.getElementById('nav-tasks');
+const navTimeline = document.getElementById('nav-timeline');
 const navAccounts = document.getElementById('nav-accounts');
-const projectList = document.getElementById('project-list');
 
-const noteView = document.getElementById('note-view');
+const inboxView = document.getElementById('inbox-view');
+const tasksView = document.getElementById('tasks-view');
+const timelineView = document.getElementById('timeline-view');
 const accountView = document.getElementById('account-view');
-const projectView = document.getElementById('project-view');
 
-const noteTextarea = document.getElementById('note-textarea');
-const noteListContainer = document.getElementById('note-list');
-const accountListContainer = document.getElementById('account-list');
+const projectTagsList = document.getElementById('project-tags-list');
+const inboxProjectSelect = document.getElementById('inbox-project-select');
 
 // Initialize
-window.addEventListener('DOMContentLoaded', () => {
-    loadNotes();
-    loadAccounts();
-    loadProjects();
+window.addEventListener('DOMContentLoaded', async () => {
+    await refreshData();
+    switchView('inbox');
 });
 
+async function refreshData() {
+    try {
+        allTasks = await invoke('get_tasks');
+        renderProjectTags();
+        renderCurrentView();
+    } catch (err) { console.error(err); }
+}
+
 // Navigation
-navNotes.addEventListener('click', () => switchView('note'));
-navAccounts.addEventListener('click', () => switchView('account'));
+navInbox.addEventListener('click', () => switchView('inbox'));
+navTasks.addEventListener('click', () => switchView('tasks'));
+navTimeline.addEventListener('click', () => switchView('timeline'));
+navAccounts.addEventListener('click', () => switchView('accounts'));
 
 function switchView(view) {
     currentView = view;
-    [noteView, accountView, projectView].forEach(v => v.style.display = 'none');
-    [navNotes, navAccounts].forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('#project-list li').forEach(li => li.classList.remove('active'));
+    [inboxView, tasksView, timelineView, accountView].forEach(v => v.style.display = 'none');
+    [navInbox, navTasks, navTimeline, navAccounts].forEach(b => b.classList.remove('active'));
 
-    if (view === 'note') {
-        noteView.style.display = 'block';
-        navNotes.classList.add('active');
-        loadNotes();
-    } else if (view === 'account') {
+    if (view === 'inbox') {
+        inboxView.style.display = 'block';
+        navInbox.classList.add('active');
+    } else if (view === 'tasks') {
+        tasksView.style.display = 'block';
+        navTasks.classList.add('active');
+    } else if (view === 'timeline') {
+        timelineView.style.display = 'block';
+        navTimeline.classList.add('active');
+    } else if (view === 'accounts') {
         accountView.style.display = 'block';
         navAccounts.classList.add('active');
         loadAccounts();
-    } else if (view === 'project') {
-        projectView.style.display = 'block';
     }
+    renderCurrentView();
 }
 
-// --- Notes Logic ---
-async function loadNotes() {
-    try {
-        const notes = await invoke('get_notes');
-        noteListContainer.innerHTML = '';
-        notes.forEach(note => {
-            const card = document.createElement('div');
-            card.className = 'card note-card';
-            card.innerHTML = `
-                <p>${note.content}</p>
-                <div class="note-actions">
-                    <span style="font-size: 0.75rem; color: var(--text-dim);">${note.created_at}</span>
-                    <button class="btn-icon" onclick="deleteNote(${note.id})">🗑️</button>
+function renderCurrentView() {
+    if (currentView === 'inbox') renderInbox();
+    else if (currentView === 'tasks') renderKanban();
+    else if (currentView === 'timeline') renderTimeline();
+}
+
+// --- Project Tags ---
+function renderProjectTags() {
+    const projects = [...new Set(allTasks.map(t => t.project_name).filter(p => p))];
+    projectTagsList.innerHTML = `<li class="${!currentProjectFilter ? 'active' : ''}" onclick="filterByProject(null)">全部任务</li>`;
+    inboxProjectSelect.innerHTML = '<option value="">无项目标记</option>';
+    
+    projects.forEach(p => {
+        const li = document.createElement('li');
+        li.textContent = `# ${p}`;
+        if (currentProjectFilter === p) li.className = 'active';
+        li.onclick = () => filterByProject(p);
+        projectTagsList.appendChild(li);
+
+        const opt = document.createElement('option');
+        opt.value = p;
+        opt.textContent = p;
+        inboxProjectSelect.appendChild(opt);
+    });
+}
+
+window.filterByProject = (p) => {
+    currentProjectFilter = p;
+    document.getElementById('current-project-filter').textContent = p || '所有项目';
+    renderProjectTags();
+    renderCurrentView();
+};
+
+// --- Inbox Logic ---
+async function renderInbox() {
+    const list = document.getElementById('inbox-list');
+    const inboxTasks = allTasks.filter(t => t.status === 'inbox');
+    list.innerHTML = '';
+    inboxTasks.forEach(t => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+            <div class="title">${t.title}</div>
+            <div class="meta">
+                <span>${t.project_name ? '#' + t.project_name : ''}</span>
+                <div class="ops">
+                    <button class="btn-copy-small" onclick="promoteToTodo(${t.id})">转为任务</button>
+                    <button class="btn-icon" onclick="deleteTask(${t.id})">🗑️</button>
                 </div>
-            `;
-            noteListContainer.appendChild(card);
-        });
-    } catch (err) { console.error(err); }
+            </div>
+        `;
+        list.appendChild(card);
+    });
 }
 
-document.getElementById('btn-save-note').addEventListener('click', async () => {
-    const content = noteTextarea.value.trim();
-    if (!content) return;
+document.getElementById('btn-save-inbox').addEventListener('click', async () => {
+    const textarea = document.getElementById('inbox-textarea');
+    const title = textarea.value.trim();
+    const projectName = inboxProjectSelect.value;
+    if (!title) return;
     try {
-        await invoke('add_note', { content });
-        noteTextarea.value = '';
-        loadNotes();
+        await invoke('add_task', { 
+            title, 
+            taskType: 'memo', 
+            status: 'inbox', 
+            priority: 'medium', 
+            projectName: projectName || null 
+        });
+        textarea.value = '';
+        await refreshData();
     } catch (err) { console.error(err); }
 });
 
-window.deleteNote = async (id) => {
-    if (!confirm('确认删除便笺？')) return;
-    try {
-        await invoke('delete_note', { id });
-        loadNotes();
-    } catch (err) { console.error(err); }
+window.promoteToTodo = async (id) => {
+    await invoke('update_task_status', { id, status: 'todo' });
+    await refreshData();
 };
 
-// --- Accounts Logic ---
+// --- Kanban Logic ---
+function renderKanban() {
+    const cols = {
+        todo: document.getElementById('col-todo'),
+        doing: document.getElementById('col-doing'),
+        done: document.getElementById('col-done')
+    };
+    Object.values(cols).forEach(c => c.innerHTML = '');
+
+    const filtered = currentProjectFilter 
+        ? allTasks.filter(t => t.project_name === currentProjectFilter)
+        : allTasks;
+
+    filtered.forEach(t => {
+        if (t.status === 'inbox') return;
+        const col = cols[t.status];
+        if (!col) return;
+
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+            <div class="title">${t.title}</div>
+            <div class="meta">
+                <select onchange="changeStatus(${t.id}, this.value)">
+                    <option value="todo" ${t.status==='todo'?'selected':''}>待办</option>
+                    <option value="doing" ${t.status==='doing'?'selected':''}>进行</option>
+                    <option value="done" ${t.status==='done'?'selected':''}>完成</option>
+                </select>
+                <button class="btn-icon" onclick="deleteTask(${t.id})">🗑️</button>
+            </div>
+        `;
+        col.appendChild(card);
+    });
+}
+
+window.changeStatus = async (id, status) => {
+    await invoke('update_task_status', { id, status });
+    await refreshData();
+};
+
+// --- Timeline Logic ---
+function renderTimeline() {
+    const container = document.getElementById('timeline-list');
+    container.innerHTML = '';
+    // 按修改时间排序
+    const sorted = [...allTasks].sort((a,b) => new Date(b.updated_at) - new Date(a.updated_at));
+    sorted.forEach(t => {
+        const item = document.createElement('div');
+        item.className = 'timeline-item';
+        item.innerHTML = `
+            <div class="time">${t.updated_at}</div>
+            <div class="content">[${t.status.toUpperCase()}] ${t.title}</div>
+        `;
+        container.appendChild(item);
+    });
+}
+
+// --- Accounts ---
 async function loadAccounts() {
+    const list = document.getElementById('account-list');
     try {
         const accounts = await invoke('get_accounts');
-        accountListContainer.innerHTML = '';
+        list.innerHTML = '';
         accounts.forEach(acc => {
             const card = document.createElement('div');
             card.className = 'card account-card';
             card.innerHTML = `
                 <div class="acc-info">
-                    <span class="badge badge-todo">${acc.platform}</span>
-                    <p style="font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; margin: 8px 0;">${acc.username}</p>
-                    <p style="color: var(--text-dim); font-size: 0.8rem;">••••••••</p>
+                    <span class="badge-todo" style="padding:2px 8px; border-radius:4px;">${acc.platform}</span>
+                    <span style="margin-left:10px;">${acc.username}</span>
                 </div>
                 <div class="acc-ops">
-                    <button class="btn-copy-small" onclick="copyToClipboard('${acc.username}', event)">复制UID</button>
-                    <button class="btn-copy-small" onclick="copyToClipboard('${acc.password}', event)">复制PWD</button>
+                    <button class="btn-copy-small" onclick="copyToClipboard('${acc.username}', event)">UID</button>
+                    <button class="btn-copy-small" onclick="copyToClipboard('${acc.password}', event)">PWD</button>
                     <button class="btn-icon" onclick="deleteAccount(${acc.id})">🗑️</button>
                 </div>
             `;
-            accountListContainer.appendChild(card);
+            list.appendChild(card);
         });
     } catch (err) { console.error(err); }
 }
 
-window.copyToClipboard = (text, event) => {
-    navigator.clipboard.writeText(text).then(() => {
-        const btn = event.currentTarget;
-        const originalText = btn.textContent;
-        btn.textContent = '已复制';
-        btn.style.color = 'var(--color-success)';
-        btn.style.borderColor = 'var(--color-success)';
-        setTimeout(() => {
-            btn.textContent = originalText;
-            btn.style.color = '';
-            btn.style.borderColor = '';
-        }, 1000);
-    });
-};
-
-document.getElementById('btn-open-add-account').addEventListener('click', () => {
-    document.getElementById('account-modal-title').textContent = '添加账号';
-    document.getElementById('edit-account-id').value = '';
-    document.getElementById('acc-username').value = '';
-    document.getElementById('acc-password').value = '';
-    document.getElementById('acc-note').value = '';
-    document.getElementById('modal-account').style.display = 'flex';
-});
-
 document.getElementById('btn-save-account').addEventListener('click', async () => {
     const platform = document.getElementById('acc-platform').value;
-    const username = document.getElementById('acc-username').value.trim();
-    const password = document.getElementById('acc-password').value.trim();
-    const note = document.getElementById('acc-note').value.trim();
-
-    if (!username || !password) return;
-
+    const username = document.getElementById('acc-username').value;
+    const password = document.getElementById('acc-password').value;
+    if (!platform || !username || !password) return;
     try {
-        await invoke('add_account', { platform, username, password, note: note || null });
+        await invoke('add_account', { platform, username, password, note: null });
         closeModal('modal-account');
         loadAccounts();
     } catch (err) { console.error(err); }
 });
 
 window.deleteAccount = async (id) => {
-    if (!confirm('确认删除此账号记录？')) return;
-    try {
+    if (confirm('删除账号？')) {
         await invoke('delete_account', { id });
         loadAccounts();
-    } catch (err) { console.error(err); }
+    }
 };
 
-// --- Projects Logic ---
-async function loadProjects() {
-    try {
-        const projects = await invoke('get_projects');
-        projectList.innerHTML = '';
-        projects.forEach(project => {
-            const li = document.createElement('li');
-            li.textContent = `${project.name}`;
-            li.addEventListener('click', () => selectProject(project));
-            projectList.appendChild(li);
-        });
-    } catch (err) { console.error(err); }
-}
-
-function selectProject(project) {
-    currentProject = project;
-    switchView('project');
-    document.querySelectorAll('#project-list li').forEach(li => {
-        if (li.textContent === project.name) li.classList.add('active');
-        else li.classList.remove('active');
-    });
-    document.getElementById('current-project-name').textContent = project.name;
-    loadKanban(project.id);
-}
-
-async function loadKanban(projectId) {
-    try {
-        const columns = await invoke('get_project_board', { projectId });
-        const board = document.getElementById('kanban-board');
-        board.innerHTML = '';
-        columns.forEach(col => {
-            const colDiv = document.createElement('div');
-            colDiv.className = 'kanban-column';
-            colDiv.innerHTML = `
-                <h4 style="color: var(--text-dim); font-size: 0.8rem; text-transform: uppercase; margin-bottom: 16px;">${col.name}</h4>
-                <div class="kanban-tasks"></div>
-                <div class="add-task-inline" style="margin-top: 12px;">
-                    <input type="text" placeholder="快速添加..." id="task-in-${col.id}">
-                    <button class="btn-copy-small" onclick="addTask(${col.id})">+</button>
-                </div>
-            `;
-            const tasksDiv = colDiv.querySelector('.kanban-tasks');
-            col.tasks.forEach(task => {
-                const card = document.createElement('div');
-                card.className = 'card task-card';
-                card.style.padding = '12px';
-                card.style.marginBottom = '8px';
-                card.textContent = task.title;
-                tasksDiv.appendChild(card);
-            });
-            board.appendChild(colDiv);
-        });
-    } catch (err) { console.error(err); }
-}
-
-window.addTask = async (columnId) => {
-    const input = document.getElementById(`task-in-${columnId}`);
-    const title = input.value.trim();
-    if (!title) return;
-    try {
-        await invoke('add_task', { columnId, title });
-        loadKanban(currentProject.id);
-    } catch (err) { console.error(err); }
+window.copyToClipboard = (text, event) => {
+    navigator.clipboard.writeText(text);
+    const btn = event.currentTarget;
+    const old = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = old, 1000);
 };
 
-document.getElementById('btn-add-project').addEventListener('click', () => {
-    document.getElementById('modal-project').style.display = 'flex';
-});
-
-document.getElementById('btn-modal-confirm-project').addEventListener('click', async () => {
-    const name = document.getElementById('input-project-name').value.trim();
-    if (!name) return;
-    try {
-        await invoke('add_project', { name });
-        closeModal('modal-project');
-        loadProjects();
-    } catch (err) { console.error(err); }
-});
-
-// Helpers
-window.closeModal = (id) => {
-    document.getElementById(id).style.display = 'none';
+// Global Helpers
+window.deleteTask = async (id) => {
+    if (confirm('确定删除此任务/记录？')) {
+        await invoke('delete_task', { id });
+        await refreshData();
+    }
 };
+
+window.closeModal = (id) => document.getElementById(id).style.display = 'none';
+document.getElementById('btn-open-add-account').onclick = () => document.getElementById('modal-account').style.display = 'flex';

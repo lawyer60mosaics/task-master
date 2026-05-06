@@ -9,18 +9,26 @@ pub fn init_db(app_dir: PathBuf) -> Result<Connection> {
     let db_path = app_dir.join("tasks.db");
     let conn = Connection::open(db_path)?;
 
-    // Create tables
-    // 1. 便笺 (Notes)
+    // 1. 统一任务模型 (Tasks)
+    // 涵盖了 便笺 (memo), 任务 (task), Bug, 想法 (idea)
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS notes (
+        "CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            title TEXT NOT NULL,
+            type TEXT DEFAULT 'task',        -- memo, task, bug, idea
+            status TEXT DEFAULT 'inbox',    -- inbox, todo, doing, done
+            priority TEXT DEFAULT 'medium', -- low, medium, high
+            project_name TEXT,              -- 所属项目标记
+            start_date TEXT,
+            end_date TEXT,
+            progress INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )",
         [],
     )?;
 
-    // 2. 账号管理 (Accounts)
+    // 2. 账号管理 (Accounts) - 保持独立
     conn.execute(
         "CREATE TABLE IF NOT EXISTS accounts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,44 +37,6 @@ pub fn init_db(app_dir: PathBuf) -> Result<Connection> {
             password TEXT NOT NULL,
             note TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )",
-        [],
-    )?;
-
-    // 3. 项目 (Projects)
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS projects (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            description TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )",
-        [],
-    )?;
-
-    // 4. 看板栏目 (Columns)
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS columns (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            project_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            sort_order INTEGER NOT NULL,
-            FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
-        )",
-        [],
-    )?;
-
-    // 5. 任务 (Tasks)
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            column_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            description TEXT,
-            priority TEXT DEFAULT 'Medium',
-            due_date TEXT,
-            sort_order INTEGER NOT NULL,
-            FOREIGN KEY (column_id) REFERENCES columns (id) ON DELETE CASCADE
         )",
         [],
     )?;
