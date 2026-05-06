@@ -31,8 +31,18 @@
                     <h1>备忘录</h1>
                 </div>
                 <div class="memo-input">
-                    <textarea id="memo-textarea" placeholder="写点什么..."></textarea>
-                    <button id="btn-save-memo">保存备忘</button>
+                    <div class="memo-type-selector">
+                        <label><input type="radio" name="memo-type" value="memo" checked> 随手记</label>
+                        <label><input type="radio" name="memo-type" value="account"> 账号密码</label>
+                        <label><input type="radio" name="memo-type" value="github"> GitHub</label>
+                        <label><input type="radio" name="memo-type" value="google"> Google</label>
+                    </div>
+                    <textarea id="memo-textarea" placeholder="描述或备注..."></textarea>
+                    <div id="account-fields" style="display: none;">
+                        <input type="text" id="memo-username" placeholder="用户名/邮箱">
+                        <input type="password" id="memo-password" placeholder="密码">
+                    </div>
+                    <button id="btn-save-memo">保存</button>
                 </div>
                 <div id="memo-list" class="memo-list">
                     <!-- 备忘录列表 -->

@@ -8,7 +8,10 @@ struct DbState(Mutex<rusqlite::Connection>);
 #[derive(Serialize, Deserialize)]
 struct Memo {
     id: i64,
+    memo_type: String,
     content: String,
+    username: Option<String>,
+    password: Option<String>,
     tags: Option<String>,
     created_at: String,
 }
@@ -39,15 +42,18 @@ struct Task {
 fn get_memos(state: State<DbState>) -> Result<Vec<Memo>, String> {
     let conn = state.0.lock().unwrap();
     let mut stmt = conn
-        .prepare("SELECT id, content, tags, created_at FROM memos ORDER BY created_at DESC")
+        .prepare("SELECT id, type, content, username, password, tags, created_at FROM memos ORDER BY created_at DESC")
         .map_err(|e| e.to_string())?;
     let memo_iter = stmt
         .query_map([], |row| {
             Ok(Memo {
                 id: row.get(0)?,
-                content: row.get(1)?,
-                tags: row.get(2)?,
-                created_at: row.get(3)?,
+                memo_type: row.get(1)?,
+                content: row.get(2)?,
+                username: row.get(3)?,
+                password: row.get(4)?,
+                tags: row.get(5)?,
+                created_at: row.get(6)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -60,10 +66,19 @@ fn get_memos(state: State<DbState>) -> Result<Vec<Memo>, String> {
 }
 
 #[tauri::command]
-fn add_memo(state: State<DbState>, content: String) -> Result<(), String> {
+fn add_memo(
+    state: State<DbState>,
+    memo_type: String,
+    content: String,
+    username: Option<String>,
+    password: Option<String>,
+) -> Result<(), String> {
     let conn = state.0.lock().unwrap();
-    conn.execute("INSERT INTO memos (content) VALUES (?)", [content])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO memos (type, content, username, password) VALUES (?, ?, ?, ?)",
+        rusqlite::params![memo_type, content, username, password],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -98,7 +113,6 @@ fn add_project(state: State<DbState>, name: String) -> Result<(), String> {
     
     let project_id = conn.last_insert_rowid();
     
-    // Add default columns: Requirements, In Progress, Done
     let default_cols = vec!["需求", "进度", "完成"];
     for (i, col_name) in default_cols.iter().enumerate() {
         conn.execute(

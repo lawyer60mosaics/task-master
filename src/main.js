@@ -42,6 +42,19 @@ function showView(view) {
 }
 
 // Memos Logic
+const accountFields = document.getElementById('account-fields');
+const memoTypeRadios = document.querySelectorAll('input[name="memo-type"]');
+
+memoTypeRadios.forEach(radio => {
+    radio.addEventListener('change', (e) => {
+        if (e.target.value === 'memo') {
+            accountFields.style.display = 'none';
+        } else {
+            accountFields.style.display = 'flex';
+        }
+    });
+});
+
 async function loadMemos() {
     try {
         const memos = await invoke('get_memos');
@@ -49,8 +62,27 @@ async function loadMemos() {
         memos.forEach(memo => {
             const card = document.createElement('div');
             card.className = 'memo-card';
+            
+            let accountHtml = '';
+            if (memo.memo_type !== 'memo') {
+                accountHtml = `
+                    <div class="account-info">
+                        <div class="account-row">
+                            <span>UID: ${memo.username || '-'}</span>
+                            <button class="btn-copy" onclick="copyToClipboard('${memo.username}')">复制</button>
+                        </div>
+                        <div class="account-row">
+                            <span>PWD: ******</span>
+                            <button class="btn-copy" onclick="copyToClipboard('${memo.password}')">复制密码</button>
+                        </div>
+                    </div>
+                `;
+            }
+
             card.innerHTML = `
+                <span class="memo-type-badge">${memo.memo_type}</span>
                 <p>${memo.content}</p>
+                ${accountHtml}
                 <div class="memo-date">${memo.created_at}</div>
             `;
             memoListContainer.appendChild(card);
@@ -60,13 +92,30 @@ async function loadMemos() {
     }
 }
 
+window.copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text).then(() => {
+        // Optional: show a toast or feedback
+    });
+};
+
 btnSaveMemo.addEventListener('click', async () => {
     const content = memoTextarea.value.trim();
-    if (!content) return;
+    const memo_type = document.querySelector('input[name="memo-type"]:checked').value;
+    const username = document.getElementById('memo-username').value.trim();
+    const password = document.getElementById('memo-password').value.trim();
+    
+    if (!content && memo_type === 'memo') return;
     
     try {
-        await invoke('add_memo', { content });
+        await invoke('add_memo', { 
+            memoType: memo_type, 
+            content, 
+            username: username || null, 
+            password: password || null 
+        });
         memoTextarea.value = '';
+        document.getElementById('memo-username').value = '';
+        document.getElementById('memo-password').value = '';
         loadMemos();
     } catch (err) {
         console.error('Failed to save memo:', err);

@@ -13,7 +13,10 @@ pub fn init_db(app_dir: PathBuf) -> Result<Connection> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS memos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type TEXT DEFAULT 'memo',
             content TEXT NOT NULL,
+            username TEXT,
+            password TEXT,
             tags TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )",
