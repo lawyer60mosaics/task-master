@@ -6,7 +6,59 @@ on:
       - main
 
 jobs:
+  # 独立版本自增任务，避免多平台并发时的竞态冲突
+  bump-version:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Auto Version Bump
+        id: bump
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # 检查提交信息是否包含 [skip ci]，避免循环（虽然我们自己也会加）
+          if [[ "${{ github.event.head_commit.message }}" == *"[skip ci]"* ]]; then
+            echo "Skipping version bump as this is a CI commit"
+            exit 0
+          fi
+
+          # 增加版本号
+          npm version patch --no-git-tag-version
+          
+          # 同步版本号到 tauri.conf.json
+          VERSION=$(node -e "console.log(require('./package.json').version)")
+          node -e "const fs=require('fs'); const c=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json')); c.version='$VERSION'; fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(c, null, 2));"
+          
+          git add package.json package-lock.json src-tauri/tauri.conf.json
+          git commit -m "chore: bump version to $VERSION [skip ci]"
+          git push origin main
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Get current version
+        id: get_version
+        run: |
+          VERSION=$(node -e "console.log(require('./package.json').version)")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
   publish:
+    needs: bump-version
     permissions:
       contents: write
     strategy:
@@ -14,9 +66,7 @@ jobs:
       matrix:
         include:
           - platform: "macos-latest"
-            args: "--target aarch64-apple-darwin"
-          - platform: "macos-latest"
-            args: "--target x86_64-apple-darwin"
+            args: "--target universal-apple-darwin" # 构建通用二进制文件（支持 Intel 和 Apple Silicon）
           - platform: "ubuntu-22.04"
             args: ""
           - platform: "windows-latest"
@@ -26,40 +76,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 获取完整历史以允许推送
+          # 确保拉取到 bump-version 任务提交的最新的代码
+          ref: main
+          fetch-depth: 0
 
       - name: setup node
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
 
-      # 只有在 Windows 运行任务时执行一次版本自增，避免四个任务重复增加
-      - name: Auto Version Bump
-        if: matrix.platform == 'windows-latest'
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          # 增加 npm 版本
-          npm version patch --no-git-tag-version
-          # 同步版本号到 tauri.conf.json
-          node -e "const fs=require('fs'); const v=require('./package.json').version; const c=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json')); c.version=v; fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(c, null, 2));"
-          git add package.json package-lock.json src-tauri/tauri.conf.json
-          git commit -m "chore: bump version [skip ci]"
-          git push origin main
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 给其他非 Windows 任务一点时间等待版本更新完成（可选）
-      - name: Wait for version bump
-        if: matrix.platform != 'windows-latest'
-        run: sleep 10s
-
-      - name: Pull latest changes
-        run: git pull origin main
-
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
+          # 如果是 macOS，需要添加双架构支持
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: install dependencies (ubuntu only)
@@ -74,10 +103,17 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS 代码签名所需环境变量（需在仓库 Secrets 中设置）
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
-          tagName: v__VERSION__
-          releaseName: "Release v__VERSION__"
+          tagName: v${{ needs.bump-version.outputs.new_version }}
+          releaseName: "Release v${{ needs.bump-version.outputs.new_version }}"
           releaseBody: "自动生成的版本发布。"
-          releaseDraft: false # 设置为 false，直接发布正式版
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
