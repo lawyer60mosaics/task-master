@@ -93,12 +93,21 @@ fn delete_project(state: State<DbState>, id: i64) -> Result<(), String> {
 // --- Task Commands ---
 
 #[tauri::command]
-fn get_tasks(state: State<DbState>, category_filter: Option<String>, status_filter: Option<String>) -> Result<Vec<Task>, String> {
+fn get_tasks(
+    state: State<DbState>, 
+    category_filter: Option<String>, 
+    status_filter: Option<String>,
+    type_filter: Option<String>,
+    project_filter: Option<String>
+) -> Result<Vec<Task>, String> {
     let conn = state.0.lock().unwrap();
     let mut query = "SELECT id, title, content, category, type, status, priority, project_name, start_date, end_date, progress, created_at, updated_at FROM tasks WHERE 1=1".to_string();
     
     if category_filter.is_some() { query.push_str(" AND category = ?"); }
     if status_filter.is_some() { query.push_str(" AND status = ?"); }
+    if type_filter.is_some() { query.push_str(" AND type = ?"); }
+    if project_filter.is_some() { query.push_str(" AND project_name = ?"); }
+    
     query.push_str(" ORDER BY created_at DESC");
 
     let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
@@ -106,6 +115,8 @@ fn get_tasks(state: State<DbState>, category_filter: Option<String>, status_filt
     let mut params: Vec<String> = Vec::new();
     if let Some(c) = category_filter { params.push(c); }
     if let Some(s) = status_filter { params.push(s); }
+    if let Some(t) = type_filter { params.push(t); }
+    if let Some(p) = project_filter { params.push(p); }
 
     let task_iter = stmt.query_map(rusqlite::params_from_iter(params), |row| {
         Ok(Task {
@@ -187,8 +198,15 @@ fn delete_task(state: State<DbState>, id: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn export_to_excel(state: State<DbState>, path: String) -> Result<(), String> {
-    let tasks = get_tasks(state, None, None)?;
+fn export_tasks_to_excel(
+    state: State<DbState>, 
+    path: String,
+    category: Option<String>,
+    status: Option<String>,
+    task_type: Option<String>,
+    project_name: Option<String>
+) -> Result<(), String> {
+    let tasks = get_tasks(state, category, status, task_type, project_name)?;
     let mut workbook = Workbook::new();
     let worksheet = workbook.add_worksheet();
 
@@ -258,6 +276,33 @@ fn delete_account(state: State<DbState>, id: i64) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn export_accounts_to_excel(state: State<DbState>, path: String) -> Result<(), String> {
+    let accounts = get_accounts(state)?;
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+
+    let header_format = Format::new().set_bold().set_background_color(Color::Silver);
+
+    let headers = ["ID", "平台", "用户名", "密码", "备注", "创建时间"];
+    for (col, header) in headers.iter().enumerate() {
+        worksheet.write_with_format(0, col as u16, *header, &header_format).map_err(|e| e.to_string())?;
+    }
+
+    for (row, acc) in accounts.iter().enumerate() {
+        let r = (row + 1) as u32;
+        worksheet.write(r, 0, acc.id).map_err(|e| e.to_string())?;
+        worksheet.write(r, 1, &acc.platform).map_err(|e| e.to_string())?;
+        worksheet.write(r, 2, &acc.username).map_err(|e| e.to_string())?;
+        worksheet.write(r, 3, &acc.password).map_err(|e| e.to_string())?;
+        worksheet.write(r, 4, acc.note.as_deref().unwrap_or("")).map_err(|e| e.to_string())?;
+        worksheet.write(r, 5, &acc.created_at).map_err(|e| e.to_string())?;
+    }
+
+    workbook.save(&path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -281,8 +326,10 @@ pub fn run() {
             get_accounts,
             add_account,
             delete_account,
-            export_to_excel
+            export_tasks_to_excel,
+            export_accounts_to_excel
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+

@@ -66,7 +66,12 @@ const App = () => {
 
   const refreshData = async () => {
     try {
-      const tasks = await invoke("get_tasks");
+      const tasks = await invoke("get_tasks", { 
+        categoryFilter: null, 
+        statusFilter: null,
+        typeFilter: null,
+        projectFilter: null
+      });
       setAllTasks(tasks);
     } catch (err) {
       message.error("获取数据失败: " + err);
@@ -184,14 +189,35 @@ const App = () => {
     }
   };
 
-  const handleExport = async () => {
+  const handleExport = async (filters = {}) => {
     try {
       const filePath = await save({
         filters: [{ name: 'Excel', extensions: ['xlsx'] }],
         defaultPath: 'tasks_export.xlsx'
       });
       if (filePath) {
-        await invoke("export_to_excel", { path: filePath });
+        await invoke("export_tasks_to_excel", { 
+          path: filePath,
+          category: filters.category || null,
+          status: filters.status || null,
+          taskType: filters.taskType || null,
+          projectName: filters.projectName || null
+        });
+        message.success("导出成功: " + filePath);
+      }
+    } catch (err) {
+      message.error("导出失败: " + err);
+    }
+  };
+
+  const handleExportAccounts = async () => {
+    try {
+      const filePath = await save({
+        filters: [{ name: 'Excel', extensions: ['xlsx'] }],
+        defaultPath: 'accounts_export.xlsx'
+      });
+      if (filePath) {
+        await invoke("export_accounts_to_excel", { path: filePath });
         message.success("导出成功: " + filePath);
       }
     } catch (err) {
@@ -227,14 +253,17 @@ const App = () => {
           <Title level={2}>下午好, 开发者</Title>
           <Text type="secondary">捕捉今天的灵感或记录工作任务</Text>
         </div>
-        <Input 
-          prefix={<SearchOutlined />} 
-          placeholder="搜索所有记录..." 
-          style={{ width: 300, borderRadius: 20 }}
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          allowClear
-        />
+        <Space>
+          <Input 
+            prefix={<SearchOutlined />} 
+            placeholder="搜索所有记录..." 
+            style={{ width: 300, borderRadius: 20 }}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            allowClear
+          />
+          <Button ghost icon={<FileExcelOutlined />} onClick={() => handleExport({ status: 'inbox' })}>导出收集箱</Button>
+        </Space>
       </div>
 
       <Card style={{ marginBottom: 40, border: '1px solid #e2e8f0' }} bodyStyle={{ padding: 24 }}>
@@ -363,7 +392,7 @@ const App = () => {
               allowClear
             />
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsProjectModalOpen(true)}>新建项目</Button>
-            <Button ghost icon={<FileExcelOutlined />} onClick={handleExport}>导出报表</Button>
+            <Button ghost icon={<FileExcelOutlined />} onClick={() => handleExport({ category: 'work' })}>导出报表</Button>
           </Space>
         </div>
         
@@ -394,7 +423,7 @@ const App = () => {
                         </div>
                         <Tag color={proj.status === 'active' ? 'processing' : 'default'}>{proj.status === 'active' ? '进行中' : '已归档'}</Tag>
                       </Space>
-                      <div style={{ width: 250, display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div style={{ width: 350, display: 'flex', alignItems: 'center', gap: 16 }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                             <Text type="secondary" style={{ fontSize: 12 }}>完成进度</Text>
@@ -402,9 +431,12 @@ const App = () => {
                           </div>
                           <Progress percent={progress} size="small" showInfo={false} strokeColor={progress === 100 ? '#22c55e' : '#3b82f6'} />
                         </div>
-                        <Popconfirm title="确定删除项目？此操作不可恢复。" onConfirm={() => handleDeleteProject(proj.id)}>
-                          <Button type="text" danger icon={<DeleteOutlined />} />
-                        </Popconfirm>
+                        <Space>
+                          <Button size="small" icon={<FileExcelOutlined />} onClick={() => handleExport({ projectName: proj.name })}>导出项目</Button>
+                          <Popconfirm title="确定删除项目？此操作不可恢复。" onConfirm={() => handleDeleteProject(proj.id)}>
+                            <Button type="text" danger icon={<DeleteOutlined />} />
+                          </Popconfirm>
+                        </Space>
                       </div>
                     </div>
                   }
@@ -472,14 +504,17 @@ const App = () => {
             <Title level={2} style={{ margin: 0 }}>📖 个人知识库</Title>
             <Text type="secondary">记录长久有效的技术路径、配置和知识点</Text>
           </div>
-          <Input 
-            prefix={<SearchOutlined />} 
-            placeholder="搜索知识点..." 
-            style={{ width: 300, borderRadius: 20 }}
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            allowClear
-          />
+          <Space>
+            <Input 
+              prefix={<SearchOutlined />} 
+              placeholder="搜索知识点..." 
+              style={{ width: 300, borderRadius: 20 }}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              allowClear
+            />
+            <Button ghost icon={<FileExcelOutlined />} onClick={() => handleExport({ taskType: 'knowledge' })}>导出知识库</Button>
+          </Space>
         </div>
         <Divider style={{ margin: '24px 0 40px' }} />
         {knowledgeItems.length === 0 && <Empty description="暂无符合条件的知识点" />}
@@ -581,8 +616,8 @@ const App = () => {
             {currentView === "inbox" && renderInbox()}
             {currentView === "projects" && renderProjectCenter()}
             {currentView === "knowledge" && renderKnowledge()}
-            {currentView === "accounts" && <AccountsView accounts={accounts} loadAccounts={loadAccounts} />}
-            {currentView === "work_timeline" && <TimelineView tasks={workTasks} />}
+            {currentView === "accounts" && <AccountsView accounts={accounts} loadAccounts={loadAccounts} handleExport={handleExportAccounts} />}
+            {currentView === "work_timeline" && <TimelineView tasks={workTasks} handleExport={() => handleExport({ category: 'work' })} />}
           </Content>
         </Layout>
       </Layout>
@@ -665,7 +700,7 @@ const App = () => {
 
 // --- Sub Components ---
 
-const AccountsView = ({ accounts, loadAccounts }) => {
+const AccountsView = ({ accounts, loadAccounts, handleExport }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form] = Form.useForm();
 
@@ -693,7 +728,10 @@ const AccountsView = ({ accounts, loadAccounts }) => {
           <Title level={2} style={{ margin: 0 }}>🔑 账号管理</Title>
           <Text type="secondary">安全存储您的平台凭据</Text>
         </div>
-        <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => setIsModalOpen(true)}>新增账号</Button>
+        <Space>
+          <Button ghost icon={<FileExcelOutlined />} onClick={handleExport}>导出账号</Button>
+          <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => setIsModalOpen(true)}>新增账号</Button>
+        </Space>
       </div>
       <Row gutter={[20, 20]}>
         {accounts.map(acc => (
@@ -733,10 +771,15 @@ const AccountsView = ({ accounts, loadAccounts }) => {
   );
 };
 
-const TimelineView = ({ tasks }) => (
+const TimelineView = ({ tasks, handleExport }) => (
   <div style={{ padding: '40px 32px' }}>
-    <Title level={2}>🕒 最近动态</Title>
-    <Text type="secondary">追踪所有工作任务的操作历史</Text>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+      <div>
+        <Title level={2} style={{ margin: 0 }}>🕒 最近动态</Title>
+        <Text type="secondary">追踪所有工作任务的操作历史</Text>
+      </div>
+      <Button ghost icon={<FileExcelOutlined />} onClick={handleExport}>导出动态</Button>
+    </div>
     <Divider style={{ margin: '24px 0 40px' }} />
     <Timeline mode="left">
       {tasks.sort((a,b) => new Date(b.updated_at) - new Date(a.updated_at)).map(t => (
