@@ -2,12 +2,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::{Manager, State};
 use rust_xlsxwriter::*;
+use magic_crypt::{new_magic_crypt, MagicCryptTrait};
 mod db;
 
 struct DbState(Mutex<rusqlite::Connection>);
 
 // --- Data Models ---
-
 #[derive(Serialize, Deserialize, Clone)]
 struct Task {
     id: i64,
@@ -21,8 +21,31 @@ struct Task {
     start_date: Option<String>,
     end_date: Option<String>,
     progress: i32,
+    tags: Option<String>,
+    is_pinned: i32,
     created_at: String,
     updated_at: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ActivityLog {
+    id: i64,
+    action_type: String,
+    entity_type: String,
+    entity_id: Option<i64>,
+    details: Option<String>,
+    created_at: String,
+}
+
+// ... 保持 Account, Project 结构不变 ...
+
+// --- Helper for Logging ---
+fn log_activity(conn: &rusqlite::Connection, action: &str, entity_type: &str, entity_id: Option<i64>, details: Option<&str>) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO activity_log (action_type, entity_type, entity_id, details) VALUES (?, ?, ?, ?)",
+        rusqlite::params![action, entity_type, entity_id, details],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[derive(Serialize, Deserialize)]
@@ -80,13 +103,32 @@ fn add_project(state: State<DbState>, name: String, description: Option<String>)
         "INSERT INTO projects (name, description) VALUES (?, ?)",
         rusqlite::params![name, description],
     ).map_err(|e| e.to_string())?;
+    
+    let id = conn.last_insert_rowid();
+    log_activity(&conn, "create", "project", Some(id), Some(&format!("创建了项目: {}", name)))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn update_project(state: State<DbState>, id: i64, name: String, description: Option<String>, status: String) -> Result<(), String> {
+    let conn = state.0.lock().unwrap();
+    conn.execute(
+        "UPDATE projects SET name = ?, description = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        rusqlite::params![name, description, status, id],
+    ).map_err(|e| e.to_string())?;
+    
+    log_activity(&conn, "update", "project", Some(id), Some(&format!("更新了项目: {}", name)))?;
     Ok(())
 }
 
 #[tauri::command]
 fn delete_project(state: State<DbState>, id: i64) -> Result<(), String> {
     let conn = state.0.lock().unwrap();
+    // 删除项目时，将任务中的项目关联取消（保持任务）
+    conn.execute("UPDATE tasks SET project_name = NULL WHERE project_name = (SELECT name FROM projects WHERE id = ?)", [id]).map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM projects WHERE id = ?", [id]).map_err(|e| e.to_string())?;
+    
+    log_activity(&conn, "delete", "project", Some(id), Some("删除了项目并解绑关联任务"))?;
     Ok(())
 }
 
@@ -98,25 +140,31 @@ fn get_tasks(
     category_filter: Option<String>, 
     status_filter: Option<String>,
     type_filter: Option<String>,
-    project_filter: Option<String>
+    project_filter: Option<String>,
+    include_archived: Option<bool>
 ) -> Result<Vec<Task>, String> {
     let conn = state.0.lock().unwrap();
-    let mut query = "SELECT id, title, content, category, type, status, priority, project_name, start_date, end_date, progress, created_at, updated_at FROM tasks WHERE 1=1".to_string();
+    let mut query = "SELECT id, title, content, category, type, status, priority, project_name, start_date, end_date, progress, tags, is_pinned, created_at, updated_at FROM tasks WHERE 1=1".to_string();
     
     if category_filter.is_some() { query.push_str(" AND category = ?"); }
-    if status_filter.is_some() { query.push_str(" AND status = ?"); }
+    if status_filter.is_some() { 
+        query.push_str(" AND status = ?"); 
+    } else if !include_archived.unwrap_or(false) {
+        query.push_str(" AND status != 'archived'");
+    }
+
     if type_filter.is_some() { query.push_str(" AND type = ?"); }
     if project_filter.is_some() { query.push_str(" AND project_name = ?"); }
     
-    query.push_str(" ORDER BY created_at DESC");
+    query.push_str(" ORDER BY is_pinned DESC, created_at DESC");
 
     let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
     
-    let mut params: Vec<String> = Vec::new();
-    if let Some(c) = category_filter { params.push(c); }
-    if let Some(s) = status_filter { params.push(s); }
-    if let Some(t) = type_filter { params.push(t); }
-    if let Some(p) = project_filter { params.push(p); }
+    let mut params: Vec<rusqlite::types::Value> = Vec::new();
+    if let Some(c) = category_filter { params.push(rusqlite::types::Value::Text(c)); }
+    if let Some(s) = status_filter { params.push(rusqlite::types::Value::Text(s)); }
+    if let Some(t) = type_filter { params.push(rusqlite::types::Value::Text(t)); }
+    if let Some(p) = project_filter { params.push(rusqlite::types::Value::Text(p)); }
 
     let task_iter = stmt.query_map(rusqlite::params_from_iter(params), |row| {
         Ok(Task {
@@ -131,8 +179,10 @@ fn get_tasks(
             start_date: row.get(8)?,
             end_date: row.get(9)?,
             progress: row.get(10)?,
-            created_at: row.get(11)?,
-            updated_at: row.get(12)?,
+            tags: row.get(11)?,
+            is_pinned: row.get(12)?,
+            created_at: row.get(13)?,
+            updated_at: row.get(14)?,
         })
     }).map_err(|e| e.to_string())?;
 
@@ -152,13 +202,17 @@ fn add_task(
     task_type: String, 
     status: String, 
     priority: String, 
-    project_name: Option<String>
+    project_name: Option<String>,
+    tags: Option<String>
 ) -> Result<(), String> {
     let conn = state.0.lock().unwrap();
     conn.execute(
-        "INSERT INTO tasks (title, content, category, type, status, priority, project_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        rusqlite::params![title, content, category, task_type, status, priority, project_name],
+        "INSERT INTO tasks (title, content, category, type, status, priority, project_name, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        rusqlite::params![title, content, category, task_type, status, priority, project_name, tags],
     ).map_err(|e| e.to_string())?;
+    
+    let id = conn.last_insert_rowid();
+    log_activity(&conn, "create", "task", Some(id), Some(&format!("创建了新条目: {}", title)))?;
     Ok(())
 }
 
@@ -173,12 +227,16 @@ fn update_task(
     status: String,
     priority: String,
     project_name: Option<String>,
+    tags: Option<String>,
+    is_pinned: i32
 ) -> Result<(), String> {
     let conn = state.0.lock().unwrap();
     conn.execute(
-        "UPDATE tasks SET title = ?, content = ?, category = ?, type = ?, status = ?, priority = ?, project_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        rusqlite::params![title, content, category, task_type, status, priority, project_name, id],
+        "UPDATE tasks SET title = ?, content = ?, category = ?, type = ?, status = ?, priority = ?, project_name = ?, tags = ?, is_pinned = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        rusqlite::params![title, content, category, task_type, status, priority, project_name, tags, is_pinned, id],
     ).map_err(|e| e.to_string())?;
+    
+    log_activity(&conn, "update", "task", Some(id), Some(&format!("更新了条目: {}", title)))?;
     Ok(())
 }
 
@@ -187,14 +245,41 @@ fn update_task_status(state: State<DbState>, id: i64, status: String) -> Result<
     let conn = state.0.lock().unwrap();
     conn.execute("UPDATE tasks SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", rusqlite::params![status, id])
         .map_err(|e| e.to_string())?;
+    
+    log_activity(&conn, "status_change", "task", Some(id), Some(&format!("状态变更为: {}", status)))?;
     Ok(())
 }
 
 #[tauri::command]
 fn delete_task(state: State<DbState>, id: i64) -> Result<(), String> {
     let conn = state.0.lock().unwrap();
+    log_activity(&conn, "delete", "task", Some(id), Some("删除了任务"))?;
     conn.execute("DELETE FROM tasks WHERE id = ?", [id]).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+fn get_activity_logs(state: State<DbState>, limit: i32) -> Result<Vec<ActivityLog>, String> {
+    let conn = state.0.lock().unwrap();
+    let mut stmt = conn.prepare("SELECT id, action_type, entity_type, entity_id, details, created_at FROM activity_log ORDER BY created_at DESC LIMIT ?")
+        .map_err(|e| e.to_string())?;
+    
+    let log_iter = stmt.query_map([limit], |row| {
+        Ok(ActivityLog {
+            id: row.get(0)?,
+            action_type: row.get(1)?,
+            entity_type: row.get(2)?,
+            entity_id: row.get(3)?,
+            details: row.get(4)?,
+            created_at: row.get(5)?,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    let mut logs = Vec::new();
+    for log in log_iter {
+        logs.push(log.map_err(|e| e.to_string())?);
+    }
+    Ok(logs)
 }
 
 #[tauri::command]
@@ -204,9 +289,10 @@ fn export_tasks_to_excel(
     category: Option<String>,
     status: Option<String>,
     task_type: Option<String>,
-    project_name: Option<String>
+    project_name: Option<String>,
+    include_archived: Option<bool>
 ) -> Result<(), String> {
-    let tasks = get_tasks(state, category, status, task_type, project_name)?;
+    let tasks = get_tasks(state, category, status, task_type, project_name, include_archived)?;
     let mut workbook = Workbook::new();
     let worksheet = workbook.add_worksheet();
 
@@ -236,17 +322,27 @@ fn export_tasks_to_excel(
 // --- Account Commands ---
 
 #[tauri::command]
-fn get_accounts(state: State<DbState>) -> Result<Vec<Account>, String> {
+fn get_accounts(state: State<DbState>, master_key: Option<String>) -> Result<Vec<Account>, String> {
     let conn = state.0.lock().unwrap();
     let mut stmt = conn
         .prepare("SELECT id, platform, username, password, note, created_at FROM accounts ORDER BY created_at DESC")
         .map_err(|e| e.to_string())?;
+    
     let acc_iter = stmt.query_map([], |row| {
+        let encrypted_pwd: String = row.get(3)?;
+        // 如果提供了 master_key，则尝试解密，否则显示为掩码
+        let display_pwd = if let Some(ref key) = master_key {
+            let mc = new_magic_crypt!(key, 256);
+            mc.decrypt_base64_to_string(&encrypted_pwd).unwrap_or_else(|_| "INVALID_KEY".to_string())
+        } else {
+            "********".to_string()
+        };
+
         Ok(Account {
             id: row.get(0)?,
             platform: row.get(1)?,
             username: row.get(2)?,
-            password: row.get(3)?,
+            password: display_pwd,
             note: row.get(4)?,
             created_at: row.get(5)?,
         })
@@ -260,11 +356,14 @@ fn get_accounts(state: State<DbState>) -> Result<Vec<Account>, String> {
 }
 
 #[tauri::command]
-fn add_account(state: State<DbState>, platform: String, username: String, password: String, note: Option<String>) -> Result<(), String> {
+fn add_account(state: State<DbState>, platform: String, username: String, password: String, note: Option<String>, master_key: String) -> Result<(), String> {
     let conn = state.0.lock().unwrap();
+    let mc = new_magic_crypt!(master_key, 256);
+    let encrypted_pwd = mc.encrypt_str_to_base64(&password);
+
     conn.execute(
         "INSERT INTO accounts (platform, username, password, note) VALUES (?, ?, ?, ?)",
-        rusqlite::params![platform, username, password, note],
+        rusqlite::params![platform, username, encrypted_pwd, note],
     ).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -277,8 +376,8 @@ fn delete_account(state: State<DbState>, id: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn export_accounts_to_excel(state: State<DbState>, path: String) -> Result<(), String> {
-    let accounts = get_accounts(state)?;
+fn export_accounts_to_excel(state: State<DbState>, path: String, master_key: String) -> Result<(), String> {
+    let accounts = get_accounts(state, Some(master_key))?;
     let mut workbook = Workbook::new();
     let worksheet = workbook.add_worksheet();
 
@@ -317,12 +416,14 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_projects,
             add_project,
+            update_project,
             delete_project,
             get_tasks,
             add_task,
             update_task,
             update_task_status,
             delete_task,
+            get_activity_logs,
             get_accounts,
             add_account,
             delete_account,

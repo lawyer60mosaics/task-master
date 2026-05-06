@@ -22,7 +22,9 @@ import {
   EditOutlined,
   SearchOutlined,
   ProjectOutlined,
-  AlertOutlined
+  AlertOutlined,
+  LockOutlined,
+  PushpinOutlined
 } from "@ant-design/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -37,6 +39,8 @@ const App = () => {
   const [allProjects, setAllProjects] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [searchText, setSearchText] = useState("");
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const [activityLogs, setActivityLogs] = useState([]);
   
   // Inbox State
   const [inboxTitle, setInboxTitle] = useState("");
@@ -51,6 +55,7 @@ const App = () => {
 
   // Project Modal State
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
   const [projectForm] = Form.useForm();
 
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
@@ -61,7 +66,7 @@ const App = () => {
   }, []);
 
   const refreshAll = async () => {
-    await Promise.all([refreshData(), refreshProjects()]);
+    await Promise.all([refreshData(), refreshProjects(), refreshLogs()]);
   };
 
   const refreshData = async () => {
@@ -70,11 +75,21 @@ const App = () => {
         categoryFilter: null, 
         statusFilter: null,
         typeFilter: null,
-        projectFilter: null
+        projectFilter: null,
+        includeArchived
       });
       setAllTasks(tasks);
     } catch (err) {
       message.error("获取数据失败: " + err);
+    }
+  };
+
+  const refreshLogs = async () => {
+    try {
+      const logs = await invoke("get_activity_logs", { limit: 50 });
+      setActivityLogs(logs);
+    } catch (err) {
+      console.error("获取日志失败:", err);
     }
   };
 
@@ -87,9 +102,9 @@ const App = () => {
     }
   };
 
-  const loadAccounts = async () => {
+  const loadAccounts = async (masterKey = null) => {
     try {
-      const data = await invoke("get_accounts");
+      const data = await invoke("get_accounts", { masterKey });
       setAccounts(data);
     } catch (err) {
       message.error("获取账号失败: " + err);
@@ -98,7 +113,7 @@ const App = () => {
 
   useEffect(() => {
     if (currentView === "accounts") {
-      loadAccounts();
+      setAccounts([]); // 切换到账号视图时先清空，强制要求解锁
     }
   }, [currentView]);
 
@@ -114,11 +129,13 @@ const App = () => {
         status: inboxType === "knowledge" ? "fixed" : "inbox",
         priority: "medium",
         projectName: inboxProject || null,
+        tags: null,
       });
       setInboxTitle("");
       setInboxContent("");
       message.success("记录成功");
       refreshData();
+      refreshLogs();
     } catch (err) {
       message.error("保存失败: " + err);
     }
@@ -129,6 +146,7 @@ const App = () => {
       await invoke("delete_task", { id });
       message.success("已删除");
       refreshData();
+      refreshLogs();
     } catch (err) {
       message.error("删除失败: " + err);
     }
@@ -138,8 +156,9 @@ const App = () => {
     try {
       await invoke("update_task_status", { id, status });
       refreshData();
+      refreshLogs();
     } catch (err) {
-      message.error("更新失败: " + err);
+      message.error("更新状态失败: " + err);
     }
   };
 
@@ -148,7 +167,8 @@ const App = () => {
     editForm.setFieldsValue({
       ...task,
       taskType: task.task_type,
-      projectName: task.project_name || undefined
+      projectName: task.project_name || undefined,
+      isPinned: task.is_pinned === 1
     });
   };
 
@@ -162,11 +182,14 @@ const App = () => {
         taskType: values.taskType,
         status: values.status,
         priority: editingTask.priority || "medium",
-        projectName: values.projectName || null
+        projectName: values.projectName || null,
+        tags: values.tags || null,
+        isPinned: values.isPinned ? 1 : 0
       });
       message.success("更新成功");
       setEditingTask(null);
       refreshData();
+      refreshLogs();
     } catch (err) {
       message.error("更新失败: " + err);
     }
@@ -174,13 +197,39 @@ const App = () => {
 
   const handleAddProject = async (values) => {
     try {
-      await invoke("add_project", { ...values });
-      message.success("项目创建成功");
+      if (editingProject) {
+        await invoke("update_project", { 
+          id: editingProject.id, 
+          ...values, 
+          status: editingProject.status 
+        });
+        message.success("项目更新成功");
+      } else {
+        await invoke("add_project", { ...values });
+        message.success("项目创建成功");
+      }
       setIsProjectModalOpen(false);
+      setEditingProject(null);
       projectForm.resetFields();
       refreshProjects();
     } catch (err) {
-      message.error("创建失败: " + err);
+      message.error("操作失败: " + err);
+    }
+  };
+
+  const toggleProjectArchive = async (project) => {
+    try {
+      const newStatus = project.status === "active" ? "archived" : "active";
+      await invoke("update_project", {
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        status: newStatus
+      });
+      message.success(newStatus === "archived" ? "项目已归档" : "项目已激活");
+      refreshProjects();
+    } catch (err) {
+      message.error("操作失败: " + err);
     }
   };
 
@@ -206,7 +255,8 @@ const App = () => {
           category: filters.category || null,
           status: filters.status || null,
           taskType: filters.taskType || null,
-          projectName: filters.projectName || null
+          projectName: filters.projectName || null,
+          includeArchived: filters.includeArchived || false
         });
         message.success("导出成功: " + filePath);
       }
@@ -215,14 +265,14 @@ const App = () => {
     }
   };
 
-  const handleExportAccounts = async () => {
+  const handleExportAccounts = async (masterKey) => {
     try {
       const filePath = await save({
         filters: [{ name: 'Excel', extensions: ['xlsx'] }],
         defaultPath: 'accounts_export.xlsx'
       });
       if (filePath) {
-        await invoke("export_accounts_to_excel", { path: filePath });
+        await invoke("export_accounts_to_excel", { path: filePath, masterKey });
         message.success("导出成功: " + filePath);
       }
     } catch (err) {
@@ -437,6 +487,10 @@ const App = () => {
                           <Progress percent={progress} size="small" showInfo={false} strokeColor={progress === 100 ? '#22c55e' : '#3b82f6'} />
                         </div>
                         <Space>
+                          <Button size="small" icon={<EditOutlined />} onClick={() => { setEditingProject(proj); projectForm.setFieldsValue(proj); setIsProjectModalOpen(true); }}>编辑</Button>
+                          <Button size="small" icon={proj.status === 'active' ? <InboxOutlined /> : <SyncOutlined />} onClick={() => toggleProjectArchive(proj)}>
+                            {proj.status === 'active' ? '归档' : '激活'}
+                          </Button>
                           <Button size="small" icon={<FileExcelOutlined />} onClick={() => handleExport({ projectName: proj.name })}>导出项目</Button>
                           <Popconfirm title="确定删除项目？此操作不可恢复。" onConfirm={() => handleDeleteProject(proj.id)}>
                             <Button type="text" danger icon={<DeleteOutlined />} />
@@ -527,7 +581,13 @@ const App = () => {
           {knowledgeItems.map(t => (
             <Col xs={24} sm={12} md={8} key={t.id}>
               <Card 
-                title={<Space wrap><BookOutlined style={{ color: '#f59e0b' }} />{t.title}</Space>} 
+                title={
+                  <Space wrap>
+                    {t.is_pinned === 1 && <PushpinOutlined style={{ color: '#ff4d4f' }} />}
+                    <BookOutlined style={{ color: '#f59e0b' }} />
+                    {t.title}
+                  </Space>
+                } 
                 hoverable
                 bodyStyle={{ padding: 16 }}
                 extra={
@@ -540,7 +600,12 @@ const App = () => {
                 <pre>
                   {t.content || '无内容记录'}
                 </pre>
-                <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: 12 }}>
+                  {t.tags && t.tags.split(',').map(tag => (
+                    <Tag key={tag} color="orange" bordered={false}>{tag.trim()}</Tag>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text type="secondary" style={{ fontSize: 11 }}>记录于 {t.created_at.split(' ')[0]}</Text>
                   <Popconfirm title="确定删除？" onConfirm={() => handleDeleteTask(t.id)}>
                     <Button type="text" size="small" danger icon={<DeleteOutlined />} />
@@ -622,7 +687,7 @@ const App = () => {
             {currentView === "projects" && renderProjectCenter()}
             {currentView === "knowledge" && renderKnowledge()}
             {currentView === "accounts" && <AccountsView accounts={accounts} loadAccounts={loadAccounts} handleExport={handleExportAccounts} />}
-            {currentView === "work_timeline" && <TimelineView tasks={workTasks} handleExport={() => handleExport({ category: 'work' })} />}
+            {currentView === "work_timeline" && <TimelineView logs={activityLogs} handleExport={() => handleExport({ category: 'work' })} />}
           </Content>
         </Layout>
       </Layout>
@@ -670,10 +735,20 @@ const App = () => {
                   <Select.Option value="doing">进行中</Select.Option>
                   <Select.Option value="done">已完成</Select.Option>
                   <Select.Option value="fixed">永久(知识)</Select.Option>
+                  <Select.Option value="archived">已归档</Select.Option>
                 </Select>
               </Form.Item>
             </Col>
           </Row>
+          <Form.Item name="tags" label="标签 (逗号分隔)">
+            <Input placeholder="如: Rust, Tauri, 待优化" />
+          </Form.Item>
+          <Form.Item name="isPinned" valuePropName="checked">
+            <Radio.Group>
+              <Radio value={true}>置顶该条目</Radio>
+              <Radio value={false}>取消置顶</Radio>
+            </Radio.Group>
+          </Form.Item>
           <Form.Item name="projectName" label="关联项目">
             <Select allowClear showSearch>
               {allProjects.map(p => <Select.Option key={p.id} value={p.name}>{p.name}</Select.Option>)}
@@ -684,11 +759,11 @@ const App = () => {
 
       {/* New Project Modal */}
       <Modal
-        title="新建工作项目"
+        title={editingProject ? "编辑项目" : "新建工作项目"}
         open={isProjectModalOpen}
-        onCancel={() => setIsProjectModalOpen(false)}
+        onCancel={() => { setIsProjectModalOpen(false); setEditingProject(null); projectForm.resetFields(); }}
         onOk={() => projectForm.submit()}
-        okText="创建项目"
+        okText={editingProject ? "保存更改" : "创建项目"}
       >
         <Form form={projectForm} layout="vertical" onFinish={handleAddProject} style={{ marginTop: 16 }}>
           <Form.Item name="name" label="项目名称" rules={[{ required: true, message: '请输入项目名称' }]}>
@@ -707,34 +782,91 @@ const App = () => {
 
 const AccountsView = ({ accounts, loadAccounts, handleExport }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [masterKey, setMasterKey] = useState("");
+  const [isLocked, setIsLocked] = useState(true);
   const [form] = Form.useForm();
+
+  // 自动锁定逻辑 (5分钟)
+  useEffect(() => {
+    let timer;
+    if (!isLocked) {
+      timer = setTimeout(() => {
+        setIsLocked(true);
+        setMasterKey("");
+        message.warning("安全超时，账号已锁定");
+      }, 5 * 60 * 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [isLocked]);
+
+  const handleUnlock = () => {
+    if (!masterKey.trim()) {
+      message.error("请输入主密码以解锁");
+      return;
+    }
+    setIsLocked(false);
+    loadAccounts(masterKey);
+  };
 
   const handleAdd = async (values) => {
     try {
-      await invoke("add_account", { ...values, note: null });
-      message.success("添加成功");
+      await invoke("add_account", { ...values, note: null, masterKey });
+      message.success("账号已加密存储");
       setIsModalOpen(false);
       form.resetFields();
-      loadAccounts();
+      loadAccounts(masterKey);
     } catch (err) { message.error(err); }
   };
 
   const handleDelete = async (id) => {
     try {
       await invoke("delete_account", { id });
-      loadAccounts();
+      loadAccounts(masterKey);
     } catch (err) { message.error(err); }
   };
+
+  const onExport = () => {
+    if (isLocked) {
+      message.error("请先解锁以进行导出");
+      return;
+    }
+    handleExport(masterKey);
+  };
+
+  if (isLocked) {
+    return (
+      <div style={{ padding: '80px 32px', textAlign: 'center' }}>
+        <div style={{ maxWidth: 400, margin: '0 auto' }}>
+          <KeyOutlined style={{ fontSize: 48, color: '#1890ff', marginBottom: 24 }} />
+          <Title level={3}>账号库已锁定</Title>
+          <Text type="secondary" style={{ display: 'block', marginBottom: 32 }}>请输入您的主密码以解密并访问凭据</Text>
+          <Input.Password 
+            size="large" 
+            placeholder="主密码" 
+            value={masterKey} 
+            onChange={e => setMasterKey(e.target.value)}
+            onPressEnter={handleUnlock}
+            style={{ marginBottom: 16 }}
+          />
+          <Button type="primary" size="large" block onClick={handleUnlock}>解锁访问</Button>
+          <div style={{ marginTop: 24 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>提示：主密码不存储在本地，请务必牢记。遗失后无法找回加密数据。</Text>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '40px 32px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 32 }}>
         <div>
           <Title level={2} style={{ margin: 0 }}>🔑 账号管理</Title>
-          <Text type="secondary">安全存储您的平台凭据</Text>
+          <Text type="secondary">您的数据已使用 AES-256 本地加密</Text>
         </div>
         <Space>
-          <Button ghost icon={<FileExcelOutlined />} onClick={handleExport}>导出账号</Button>
+          <Button ghost icon={<LockOutlined />} onClick={() => { setIsLocked(true); setMasterKey(""); }}>立即锁定</Button>
+          <Button ghost icon={<FileExcelOutlined />} onClick={onExport}>导出账号</Button>
           <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => setIsModalOpen(true)}>新增账号</Button>
         </Space>
       </div>
@@ -752,7 +884,7 @@ const AccountsView = ({ accounts, loadAccounts, handleExport }) => {
               </div>
               <Space split={<Divider type="vertical" />}>
                 <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => { navigator.clipboard.writeText(acc.username); message.success("用户名已复制"); }}>复制 ID</Button>
-                <Button type="link" size="small" icon={<KeyOutlined />} onClick={() => { navigator.clipboard.writeText(acc.password); message.success("密码已复制"); }}>复制密码</Button>
+                <Button type="link" size="small" icon={<KeyOutlined />} onClick={() => { navigator.clipboard.writeText(acc.password); message.success("密码已解密并复制"); }}>复制密码</Button>
               </Space>
             </Card>
           </Col>
@@ -763,7 +895,7 @@ const AccountsView = ({ accounts, loadAccounts, handleExport }) => {
         open={isModalOpen} 
         onCancel={() => setIsModalOpen(false)} 
         onOk={() => form.submit()}
-        okText="保存"
+        okText="加密保存"
         cancelText="取消"
       >
         <Form form={form} layout="vertical" onFinish={handleAdd} style={{ marginTop: 16 }}>
@@ -776,40 +908,55 @@ const AccountsView = ({ accounts, loadAccounts, handleExport }) => {
   );
 };
 
-const TimelineView = ({ tasks, handleExport }) => (
-  <div style={{ padding: '40px 32px' }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-      <div>
-        <Title level={2} style={{ margin: 0 }}>🕒 最近动态</Title>
-        <Text type="secondary">追踪所有工作任务的操作历史</Text>
+const TimelineView = ({ logs, handleExport }) => {
+  const getActionLabel = (action) => {
+    const map = {
+      'create': '创建',
+      'update': '编辑',
+      'delete': '删除',
+      'status_change': '变更状态',
+      'export': '导出'
+    };
+    return map[action] || action;
+  };
+
+  const getEntityLabel = (entity) => {
+    const map = {
+      'task': '条目',
+      'project': '项目',
+      'account': '账号'
+    };
+    return map[entity] || entity;
+  };
+
+  return (
+    <div style={{ padding: '40px 32px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <div>
+          <Title level={2} style={{ margin: 0 }}>🕒 最近动态</Title>
+          <Text type="secondary">追踪所有工作任务的操作历史</Text>
+        </div>
+        <Button ghost icon={<FileExcelOutlined />} onClick={handleExport}>导出动态</Button>
       </div>
-      <Button ghost icon={<FileExcelOutlined />} onClick={handleExport}>导出动态</Button>
+      <Divider style={{ margin: '24px 0 40px' }} />
+      <Timeline mode="left">
+        {logs.map(log => (
+          <Timeline.Item 
+            key={log.id} 
+            label={<Text type="secondary" style={{ fontSize: 12 }}>{log.created_at}</Text>} 
+            color={log.action_type === 'delete' ? 'red' : log.action_type === 'create' ? 'green' : 'blue'}
+          >
+            <Card size="small" style={{ borderRadius: 12, marginBottom: 8 }}>
+              <Space direction="vertical" size={0}>
+                <Text strong>{getActionLabel(log.action_type)}{getEntityLabel(log.entity_type)}</Text>
+                <Text type="secondary" style={{ fontSize: 13 }}>{log.details}</Text>
+              </Space>
+            </Card>
+          </Timeline.Item>
+        ))}
+      </Timeline>
     </div>
-    <Divider style={{ margin: '24px 0 40px' }} />
-    <Timeline mode="left">
-      {tasks.sort((a,b) => new Date(b.updated_at) - new Date(a.updated_at)).map(t => (
-        <Timeline.Item 
-          key={t.id} 
-          label={<Text type="secondary" style={{ fontSize: 12 }}>{t.updated_at}</Text>} 
-          color={t.status === 'done' ? 'green' : t.status === 'doing' ? 'blue' : 'gray'}
-        >
-          <Card size="small" style={{ borderRadius: 12, marginBottom: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 8, height: 8, borderRadius: 4, background: t.status === 'done' ? '#22c55e' : '#3b82f6' }} />
-              <div style={{ flex: 1 }}>
-                <Text strong style={{ fontSize: 14 }}>{t.title}</Text>
-                <div style={{ marginTop: 2 }}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>项目: {t.project_name || '通用'}</Text>
-                  <Divider type="vertical" />
-                  <Tag bordered={false} size="small">{t.status.toUpperCase()}</Tag>
-                </div>
-              </div>
-            </div>
-          </Card>
-        </Timeline.Item>
-      ))}
-    </Timeline>
-  </div>
-);
+  );
+};
 
 export default App;

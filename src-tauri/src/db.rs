@@ -67,5 +67,29 @@ pub fn init_db(app_dir: PathBuf) -> Result<Connection> {
         [],
     )?;
 
+    // 4. 活动日志 (Activity Log)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS activity_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action_type TEXT NOT NULL,      -- create, update, delete, status_change, export
+            entity_type TEXT NOT NULL,      -- task, project, account
+            entity_id INTEGER,
+            details TEXT,                   -- JSON 或 描述文本
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )?;
+
+    // 迁移：为 tasks 增加新字段
+    let tags_exists: bool = conn.query_row(
+        "SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='tags'",
+        [],
+        |row| row.get(0),
+    ).unwrap_or(false);
+    if !tags_exists {
+        let _ = conn.execute("ALTER TABLE tasks ADD COLUMN tags TEXT", []);
+        let _ = conn.execute("ALTER TABLE tasks ADD COLUMN is_pinned INTEGER DEFAULT 0", []);
+    }
+
     Ok(conn)
 }
